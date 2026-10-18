@@ -234,7 +234,7 @@ export default {
   '0988': 'Remo bajo a una mano de pie con banda', // band one arm standing low row
   '0990': 'Remo sentado con giro a una mano con banda', // band one arm twisting seated row
   '1018': 'Encogimientos de hombros con banda', // band shrug
-  '1010': 'Peso muerto piernas rectas con banda', // band straight leg deadlift
+  '1010': 'Peso muerto piernas rectas con banda (variante)', // band straight leg deadlift
   '1013': 'Jalón supino con banda', // band underhand pulldown
   '1316': 'Pullover con brazos flexionados con barra', // barbell bent arm pullover
   '0034': 'Pullover declinado con brazos flexionados con barra', // barbell decline bent arm pullover
@@ -717,7 +717,7 @@ export default {
   '1672': 'Curl Zottman en banco Scott a una mano con mancuerna', // dumbbell one arm zottman preacher curl
   '0365': 'Curl de muñeca neutro sobre banco con mancuerna', // dumbbell over bench neutral wrist curl
   '0366': 'Curl de muñeca neutro sobre banco a una mano con mancuerna', // dumbbell over bench one arm neutral wrist curl
-  '1623': 'Press inclinado con palmas enfrentadas con mancuernas', // dumbbell palms in incline bench press
+  '1623': 'Press inclinado con palmas enfrentadas con mancuernas (variante)', // dumbbell palms in incline bench press
   '0370': 'Curl martillo en banco Scott con mancuerna', // dumbbell peacher hammer curl
   '1673': 'Curl en banco Scott sobre fitball con mancuerna', // dumbbell preacher curl over exercise ball
   '0373': 'Extensión de tríceps con pronación con mancuernas', // dumbbell pronate-grip triceps extension

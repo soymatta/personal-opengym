@@ -67,10 +67,10 @@ test('exercise names follow the language, and both languages stay searchable', a
   await expect(page.getByText('barbell full squat')).toHaveCount(0)
 })
 
-test('German and Russian use their own vocabulary for routine, plan and rest', async ({ page }) => {
-  // The traps a key-set comparison cannot see: in Russian a routine is a Программа (a План is
-  // the weekly plan) and rest is Отдых; in German rest is a Pause, never a Ruhe. A literal
-  // translation of the English words reads wrong even though every key is present.
+test('German and Chinese use their own vocabulary for routine, plan and rest', async ({ page }) => {
+  // The traps a key-set comparison cannot see: in German rest is a Pause, never a Ruhe, and in
+  // Chinese a routine is a 训练日 ("training day"), not a literal translation of the English word.
+  // A literal translation reads wrong even though every key is present.
   await page.goto('/#/settings')
   await pickLanguage(page, 'Deutsch')
   await page.getByText('Pausen-Timer').click()
@@ -82,8 +82,8 @@ test('German and Russian use their own vocabulary for routine, plan and rest', a
   await expect(page.getByText('Routinen', { exact: true })).toBeVisible()
 
   await page.goto('/#/settings')
-  await pickLanguage(page, 'Русский', 'Sprache')
+  await pickLanguage(page, '中文', 'Sprache')
   await page.goto('/#/plan')
-  await expect(page.getByRole('heading', { name: 'Готовые планы' })).toBeVisible()
-  await expect(page.getByText('Программы', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '现成计划' })).toBeVisible()
+  await expect(page.getByText('训练日', { exact: true })).toBeVisible()
 })

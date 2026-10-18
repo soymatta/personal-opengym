@@ -1,10 +1,12 @@
 # Vercel deploys the static PWA only (HashRouter, no rewrites needed).
 # Nothing server-side ships: no API, no Docker. Optional cloud sync = Supabase
 # (see docs/SUPABASE_VERCEL.md). Everything else here is repo material, not app.
-media/
-data/
-supabase/
-docs/
-scripts/
-assets/
-.github/
+# Anchored with a leading slash on purpose: `.vercelignore` follows .gitignore
+# syntax, so a bare `scripts/` would also exclude frontend/scripts/ (check-locales.mjs).
+/media/
+/data/
+/supabase/
+/docs/
+/scripts/
+/assets/
+/.github/

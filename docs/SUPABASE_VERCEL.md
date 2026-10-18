@@ -24,8 +24,14 @@ Opción recomendada — Root Directory `frontend`:
    - `VITE_GIF_BASE` = `https://cdn.jsdelivr.net/gh/hasaneyldrm/exercises-dataset@7455efae41b330c265e7cd4b78dfa848e7ce5ebd/videos/`
 4. **Deploy**. La app usa HashRouter, no necesita rewrites.
 
-Alternativa monorepo (Root Directory `/`): el `vercel.json` de la raíz ya apunta a
-`frontend/dist`; solo añade las mismas env vars.
+La configuración vive en `frontend/vercel.json` (framework `vite`, `npm ci` + `npm run build`,
+salida `dist`) y **Node 22** está fijado en `frontend/.nvmrc`: `vite 8` exige
+`^20.19.0 || >=22.12.0`, así que un proyecto con Node 18 falla el build aunque el código esté bien.
+
+Alternativa monorepo (Root Directory `/`): entonces manda el `vercel.json` de la raíz, que apunta
+a `frontend/dist`, más el `.nvmrc` de la raíz; solo añade las mismas env vars. **No mezcles las
+dos**: con Root Directory `frontend`, el `vercel.json` de la raíz se ignora, y si llegara a
+leerse sus órdenes `cd frontend && …` fallarían al ejecutarse ya dentro de `frontend/`.
 
 ## 3. Uso en cada dispositivo
 

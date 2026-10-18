@@ -2,6 +2,58 @@
 
 ## Unreleased
 
+### A plate calculator, percentage waves, and a note per lift
+
+Four things you reach for in the middle of a session: how much is on the bar, what today's
+percentage actually comes to, what you learned about this exercise last time, and whether the
+tape is moving. All of it local, and none of it behind a new screen to hunt for.
+
+- 🧮 **Plate calculator.** A plate button next to every barbell lift opens the loaded bar as a
+  picture: the plates in the order they go on, the nearest weight those plates can actually make,
+  and what is missing. It knows both plate sets instead of converting one into the other — a 45 lb
+  disc is not a 20 kg disc — and each plate is drawn at its own size, so a 15 kg and a 25 kg bar
+  are visibly different bars. Hidden for holds and cardio, where there is no bar to load.
+- 📈 **Percentage waves, for a plan that is written in percentages.** An exercise can be set to a
+  wave instead of a single working weight: 65/75/85, 70/80/90, 75/85/95 at 5/5/5, 3/3/3, 5/3/1, and
+  a 40/50/60 deload, each set computed from a training max (90 % of your best estimated 1RM, or
+  the number you set yourself) and snapped to what the plates can make. The routine summary states
+  the share rather than a weight, because the weight does not exist until the session is built —
+  and a wave that is chosen in advance is not counted as a session you progressed.
+- 📝 **A note per exercise.** "Seat at 3", "left shoulder pinches below the collarbone", "belt on
+  from 100 kg" — written in the exercise sheet and shown on the exercise block during the workout,
+  which is the only moment it is worth anything. It travels in the JSON backup, the NDJSON export
+  and the AI export (`notes[]`, with the exercise's readable name beside its id).
+- 📏 **Measurements.** Waist, chest, hips, thigh, arm, forearm, calf and neck, one entry per day.
+  Stored in centimetres whatever unit you display — a metric log and an imperial one are the same
+  records — charted in Stats next to body weight, and exported with the unit that was asked for
+  (`measures[]`), so no bare number is ever left for someone else to guess at.
+- 🧱 **A 5×5 plan in the library.** Three lifts a session, squat every time, barbell only, nothing
+  a beginner needs to be taught. Mon and Fri: bench press and row. Wed: overhead press and one
+  heavy set of five deadlifts. It is the program the app's linear progression was written for, so
+  it needs no policy of its own.
+- 🌐 **Eight UI languages, not twelve.** Russian, Turkish, Polish and Korean are dropped: the app
+  now ships EN, DE, ES, FR, IT, PT, ZH and HI, and every string it has is translated in each of
+  them. The four packs and their instruction files are gone from the tree, and picking one of them
+  no longer means reading English in a translated shell.
+- 🖼️ **The exercise media actually loads.** A deploy with no media environment variables asked for
+  `img/…` relative to the page, so every thumbnail and demo GIF 404'd. The default is now the same
+  pinned dataset commit the demo uses (`.env.example` documents serving your own copy), and a
+  picture that fails to load drops the frame instead of leaving a broken-image icon in the middle
+  of a workout.
+- 🐛 **The service worker cached responses a second too late.** It cloned the response inside a
+  floating `caches.open()`, by which time the page had consumed the body — "Response body is
+  already used", and nothing cached. It clones before handing the response over now.
+- 🐛 Two bugs the German 320 px check found: the measurement sheet labelled its fields with the
+  dataset's body-part vocabulary (a German waist read as "Rumpf"), and the Stats card headers
+  pushed the page 9 px wide on a 320 px phone.
+- 🧹 **Under the hood.** `lib/mobile.js` deleted (a `MOBILE = false` flag whose share path could
+  never run) and the unused `IS_APPLE`; the `qa-tester` skill (with its `@opencode-ai/plugin`
+  dependency) moved from `assets/` to the `.opencode/` path it is registered at; the two orphaned
+  screenshots are in the README now. 38 new tests — 329 in all — covering the CSV parsers, the
+  body-bag exercise matcher, unit conversion per row, Apple Health weigh-ins, the import merge and
+  the muscle-load math, including a check that every muscle name is translated in every locale
+  (the one indirection the locale checker cannot see).
+
 ### PWA-only, local-first, AI-free
 
 This fork removed everything that stood between you and a static app that runs in a browser.

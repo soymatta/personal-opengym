@@ -45,7 +45,8 @@ Docker, and no login gate**. Everything the user owns lives in the browser's loc
 
 ```
 frontend/                 React 19 + Vite PWA (the whole app)
-  src/lib/                pure logic (progression, 1RM, history, export) + Vitest tests beside it
+  src/lib/                pure logic (progression, 1RM, percentage waves, plate math,
+                          measurements, history, export) + Vitest tests beside it
   src/store/              Zustand store (useStore = data, useUI = ephemeral UI)
   src/views/              routed screens (Home, Plan, Workout, Stats, History, Library, Settings)
   src/sheets.jsx          modal sheets (the app's "breakout" UI)
@@ -57,19 +58,20 @@ docs/SUPABASE_VERCEL.md   optional multi-device setup
 
 ## Conventions
 
-- **Every string ships in every language.** The app speaks 12 languages and a user can switch
+- **Every string ships in every language.** The app speaks 8 languages and a user can switch
   at any moment, so English text reaching a translated UI is a bug, not a gap. When you add or
   change UI text — a label, a button, a toast, an option, a placeholder, a plan or routine name:
   1. English first (the source string is the key, `t('…')`).
-  2. Then all 11 locales in `frontend/src/locales/` (`de es fr hi it ko pl pt ru tr zh`), in the
+  2. Then all 7 locales in `frontend/src/locales/` (`de es fr hi it pt zh`), in the
      same commit. Append a new key with the same text in each file, next to the section it
      belongs to.
   3. Verify with `npm run locales` (also part of `npm run qa`). It fails on a key missing from any
      locale AND on any `t('…')` literal no locale carries, so a string you forgot cannot pass.
      `ALLOW_ENGLISH_ONLY` in that script is the only escape hatch — keep it empty; every entry
      is text a non-English user will read in English.
-  4. Match the existing vocabulary, don't invent a parallel one (`Routine` is `Программа` in
-     Russian, `Plan treningowy` in Polish, `루틴` in Korean; `Rest` is `Pause` in German).
+  4. Match the existing vocabulary, don't invent a parallel one (`Rest` is `Pause` in German, a
+     routine is a `训练日` in Chinese, `Rotina` in Portuguese — never a literal translation of the
+     English word).
 - **Exercise names are data, not UI strings.** The dataset ships English `name`s only, so
   `frontend/src/names/es.js` holds the hand-written Spanish ones, each line carrying the
   dataset's English name in a comment that `es.test.js` checks character for character — an id

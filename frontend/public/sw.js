@@ -20,7 +20,13 @@ self.addEventListener('fetch', e => {
     )))
   } else {
     e.respondWith(fetch(e.request).then(res => {
-      if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()))
+      // Clone before handing the response to the page: a clone() inside the floating
+      // caches.open() below runs after the page has consumed the body, and throws
+      // "Response body is already used". Cloning here is synchronously safe.
+      if (res.ok) {
+        const copy = res.clone()
+        caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {})
+      }
       return res
     }).catch(() => caches.match(e.request).then(hit => hit || caches.match('index.html'))))
   }

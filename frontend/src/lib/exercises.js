@@ -27,11 +27,14 @@ export function registerCustom(list) {
 // Full searchable catalogue — customs first so your own exercises are easy to find.
 export const allExercises = st => [...(st.customEx || []), ...EXDB]
 
-// Media normally sits next to the app (img/ and gif/, mounted into the web container).
-// A build can point them somewhere else — the demo build pulls them off a CDN instead of
-// shipping ~140 MB of images into the deployment.
-const IMG_BASE = import.meta.env.VITE_IMG_BASE || 'img/'
-const GIF_BASE = import.meta.env.VITE_GIF_BASE || 'gif/'
+// Media (images/GIFs) is ~140 MB the dataset ships separately, so nothing in this repo
+// bundles it. Default to the same pinned CDN the demo uses — a bare `img/` resolves relative
+// to the page, so a deploy with no env vars 404s every thumbnail. A build that serves its own
+// copy sets VITE_IMG_BASE / VITE_GIF_BASE (see .env.example); a local media server is
+// `VITE_IMG_BASE=img/` plus the dev proxy in vite.config.js.
+const CDN = 'https://cdn.jsdelivr.net/gh/hasaneyldrm/exercises-dataset@7455efae41b330c265e7cd4b78dfa848e7ce5ebd/'
+const IMG_BASE = import.meta.env.VITE_IMG_BASE || CDN + 'images/'
+const GIF_BASE = import.meta.env.VITE_GIF_BASE || CDN + 'videos/'
 export const imgSrc = ex => IMG_BASE + ex.img
 export const gifSrc = ex => GIF_BASE + ex.gif
 

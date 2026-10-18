@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Media (exercise images/GIFs) is served by a local static server in dev; there is no API.
+// Optional: only used when VITE_IMG_BASE=img/ (serving your own copy of the dataset media).
+// By default the app loads images/GIFs from the CDN, so there is no media server to run.
 const media = process.env.MEDIA_TARGET || 'http://127.0.0.1:8888'
 
 export default defineConfig({

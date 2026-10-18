@@ -1,20 +1,16 @@
-# Runs on pull requests too — the other two workflows only fire on push to main, so
-# contributed changes used to reach main without anything ever having been run.
+# Runs on pull requests too — a static app still breaks on a bad import or a stale
+# locale table, and neither is caught by a type-checker we don't have.
 name: Tests
 
 on:
   pull_request:
     paths:
       - 'frontend/**'
-      - 'api/**'
-      - 'scripts/build-coach-library.mjs'
       - '.github/workflows/test.yml'
   push:
     branches: [main]
     paths:
       - 'frontend/**'
-      - 'api/**'
-      - 'scripts/build-coach-library.mjs'
       - '.github/workflows/test.yml'
   workflow_dispatch:
 
@@ -30,7 +26,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # node:22-alpine in web/Dockerfile and api/Dockerfile — CI must match production.
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -43,36 +38,31 @@ jobs:
       # A broken import or bad JSX fails the build long before any test covers it.
       - run: npm run build
         working-directory: frontend
+      # Locales in sync AND every t('…') string in the source translated — the two ways
+      # English text reaches a translated UI.
       - run: node scripts/check-locales.mjs
         working-directory: frontend
 
-  api:
+  e2e:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      # No dependencies to install: the Coach tests run on node:test and drive the in-repo
-      # fixture provider, so the whole job graph works without an AI account or a network.
-      - run: npm test
-        working-directory: api
-      # The API's copy of the exercise catalogue is generated and committed. A dataset change
-      # that forgets to regenerate it would otherwise only surface as "the Coach can't find
-      # that exercise" on somebody's instance.
-      - run: node scripts/build-coach-library.mjs --check
-
-  # Building the api image is the only place that proves the bundled Claude CLI actually
-  # installs and starts on alpine — the Dockerfile runs `claude --version` as a build step.
-  api-image:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      - run: npm run e2e
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
-          context: ./api
-          push: false
-          load: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7

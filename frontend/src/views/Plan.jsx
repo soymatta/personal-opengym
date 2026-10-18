@@ -2,21 +2,16 @@ import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { DAYN, uid, exCount } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
-import { dayAssignSheet, loadStarterPlan, planToolsSheet } from '../sheets.jsx'
+import { dayAssignSheet, loadPlan, planToolsSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
 import { glyphOf, DEFAULT_GLYPH } from '../lib/glyphs.js'
-import { coachAvailable } from '../lib/coach.js'
-import { DEMO } from '../lib/demo.js'
-import { MOBILE } from '../lib/mobile.js'
+import { PLAN_LIBRARY } from '../lib/plans.js'
 
 export default function Plan() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
-  const user = useStore(s => s.user)
-  const config = useStore(s => s.config)
   const update = useStore(s => s.update)
-  const coachOn = coachAvailable(config, user, { demo: DEMO, mobile: MOBILE })
 
   const addRoutine = () => {
     const r = { id: uid(), name: t('New routine'), emoji: DEFAULT_GLYPH, ex: [] }
@@ -27,9 +22,20 @@ export default function Plan() {
   return <>
     <div className="hdr">
       <div><h1>{t('Plan')}</h1><div className="sub">{t('Your weekly routine')}</div></div>
-      {coachOn && <button className="iconbtn" onClick={() => nav('/coach')} aria-label={t('Coach')} title={t('Coach')}><Icon name="sparkles" /></button>}
       <button className="iconbtn" onClick={planToolsSheet} aria-label={t('Share your plan')} title={t('Share your plan')}><Icon name="upload" /></button>
     </div>
+
+    {/* Ready-made plans sit first because the hard part of a plan is deciding one, not typing
+        it in: each one creates its routines and fills the week in a single tap. */}
+    <h4 className="sec">{t('Pre-made plans')}</h4>
+    <div className="list" style={{ marginBottom: 20 }}>
+      {PLAN_LIBRARY.map(p => <div key={p.key} className="item" onClick={() => loadPlan(p.key)}>
+        <span className="lrow-i"><Icon name={p.icon} /></span>
+        <div className="grow"><div className="tt">{t(p.name)}</div><div className="ss">{t(p.note)}</div></div>
+        <span className="tag acc">{t('Load')}</span>
+      </div>)}
+    </div>
+
     <div className="cols"><div>
       <h4 className="sec">{t('Week schedule')}</h4>
       <div className="list" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -51,7 +57,7 @@ export default function Plan() {
         <div className="grow"><div className="tt">{r.name}</div><div className="ss">{exCount(r.ex.length)}</div></div>
         <Icon name="chevronRight" className="chev" /></div>)}</div> : <>
         <div className="empty"><div className="ico"><Icon name="clipboard" /></div>{t('No routines yet.')}<br />{t('Create one or load the starter plan.')}</div>
-        <Button icon="sparkles" onClick={loadStarterPlan}>{t('Load starter plan (Push / Pull / Legs)')}</Button>
+        <Button icon="sparkles" onClick={() => loadPlan('ppl')}>{t('Load starter plan (Push / Pull / Legs)')}</Button>
       </>}
     </div></div>
   </>

@@ -1,4 +1,7 @@
 # Puts a "Sponsor" button on the repo header. The GitHub entry only works once the account is
 # enrolled in GitHub Sponsors (github.com/sponsors — identity check, Stripe payout account and
 # a tax form); until then the button is simply not shown.
+#
+# Deliberately the upstream author, not the fork: the app is theirs, this fork only removed
+# things and added a data export. Nothing here solicits money for the fork itself.
 github: DuarteSantos8

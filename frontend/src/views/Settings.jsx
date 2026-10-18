@@ -1,73 +1,63 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore, DEF, hasData } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { ACCENTS, todayISO, localTZ } from '../lib/format.js'
+import { ACCENTS, todayISO } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
-import { webauthnOK, passkeyLogin, passkeyRegister, IS_ANDROID } from '../lib/api.js'
-import { pushSupported, enablePush, disablePush, sendTestPush } from '../lib/push.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
 import { t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
-import { MOBILE, shareExport, syncReminder } from '../lib/mobile.js'
-import { loadStarterPlan, confirmSheet, importFromApp } from '../sheets.jsx'
-import { coachAvailable, hasConsent } from '../lib/coach.js'
-import { forgetCoach } from '../lib/coach-api.js'
+import { IS_ANDROID } from '../lib/platform.js'
+import { downloadFile } from '../lib/history-export.js'
+import { buildAiExport, aiToNDJSON, aiFilename, readAnyImport } from '../lib/data-export.js'
+import { isSupabaseConfigured, sbSignIn, sbSignUp } from '../lib/supabase.js'
+import { loadStarterPlan, confirmSheet, importFromApp, exerciseExportPicker, dayExportPicker } from '../sheets.jsx'
+import { JOINTS } from '../lib/injuries.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
+
+const clone = o => JSON.parse(JSON.stringify(o))
 
 export default function Settings() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
-  const user = useStore(s => s.user)
-  const config = useStore(s => s.config)
-  const { update, replaceState, setUser, pullState, pushState, signOut, signOutAll, resetDemo } = useStore()
+  const sbUser = useStore(s => s.sbUser)
+  const cloud = isSupabaseConfigured() && !DEMO
+  const { update, replaceState, pullState, pushState, resetDemo } = useStore()
   const toast = useUI(s => s.toast)
   const fileRef = useRef(null)
   const importRef = useRef(null)
   const wakeOK = wakeLockSupported()
+  const injuries = S.injuries || []
 
-  const doExport = async () => {
-    const json = JSON.stringify(S, null, 2)
-    const name = 'opengym-backup-' + todayISO() + '.json'
-    // WKWebView can't download blob URLs — the native build hands the file to the share sheet.
-    if (MOBILE) {
-      try { await shareExport(json, name); toast(t('Backup exported')) } catch (e) { /* share sheet dismissed */ }
-      return
-    }
-    const blob = new Blob([json], { type: 'application/json' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
+  const doExport = () => {
+    downloadFile(JSON.stringify(S, null, 2), 'opengym-backup-' + todayISO() + '.json', 'application/json')
     toast(t('Backup exported'))
   }
+  // AI-friendly: everything in one document, plus an NDJSON variant (one set per line) that
+  // is the cheapest thing to paste into a model. Both round-trip back through Import.
+  const doExportAi = kind => {
+    const ai = buildAiExport(S)
+    if (kind === 'ndjson') downloadFile(aiToNDJSON(ai), aiFilename('ndjson'), 'application/x-ndjson')
+    else downloadFile(JSON.stringify(ai, null, 2), aiFilename('json'), 'application/json')
+    toast(t('AI export saved'))
+  }
   const doImport = ev => {
-    const f = ev.target.files[0]; if (!f) return
+    const f = ev.target.files[0]; ev.target.value = ''; if (!f) return
     const rd = new FileReader()
     rd.onload = () => {
       try {
-        const data = JSON.parse(rd.result)
-        if (!data.workouts || !data.routines) throw new Error('not an openGym backup')
-        confirmSheet({ title: t('Import backup?'), message: t('This replaces all current data with the backup file.'), confirmText: t('Import'), danger: true, onConfirm: () => { replaceState(Object.assign(JSON.parse(JSON.stringify(DEF)), data), true); toast(t('Backup imported')) } })
-      } catch (e) { toast(t('Import failed: {0}', e.message)) }
+        const { state, kind } = readAnyImport(rd.result)
+        confirmSheet({
+          title: kind === 'ai' ? t('Import AI export?') : t('Import backup?'),
+          message: t('This replaces all current data with the backup file.'),
+          confirmText: t('Import'), danger: true,
+          onConfirm: () => { replaceState(Object.assign(clone(DEF), state), true); toast(t('Backup imported')) },
+        })
+      } catch (e) { toast(t('Import failed: {0}', t(e.message))) }
     }
     rd.readAsText(f)
   }
-  const signInHere = async () => {
-    try { const u = await passkeyLogin(); setUser(u); await pullState(); toast(t('Welcome back, {0}', u.name)) }
-    catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Sign-in failed')) }
-  }
-  const registerHere = () => useUI.getState().openSheet(close => <RegisterInline close={close} setUser={setUser} pushState={pushState} pullState={pullState} toast={toast} />)
-  // Ends the profile's sessions on every device — this one included, so on success it lands in
-  // the same place as the plain sign-out above (home, local data cleared). On failure nothing
-  // local is touched: still signed in here, and say so rather than leaving a half-signed-out app.
-  const signOutEverywhere = () => confirmSheet({
-    title: t('Sign out everywhere?'),
-    message: t('Signs this profile out on every device, including this one. Your passkeys keep working — sign in with them again anytime.'),
-    confirmText: t('Sign out everywhere'), danger: true,
-    onConfirm: async () => {
-      try { await signOutAll(); nav('/home'); toast(t('Signed out on all devices')) }
-      catch (e) { toast(t('Could not sign out everywhere — you are still signed in.')) }
-    },
-  })
 
   return <div className="narrow">
     <div className="hdr">
@@ -75,31 +65,26 @@ export default function Settings() {
       <div style={{ flex: 1, marginLeft: 10 }}><h1>{t('Settings')}</h1></div>
     </div>
 
-    {/* ---------- account (demo and mobile builds have nothing to sign in to) ---------- */}
-    <Section title={MOBILE ? t('Your data') : DEMO ? t('Demo') : t('Account')}>
-      {MOBILE ? <>
-        <Row icon="lock" iconTint="var(--acc)" title={t('All data stays on this phone')} subtitle={t('No account, no cloud — back it up anytime with Export below.')} />
-        <Row icon="rocket" iconTint="var(--indigo)" title={t('Self-host openGym')} subtitle={t('Passkey sign-in, sync across your devices, your own data.')} accessory="chevron"
-          onClick={() => window.open(REPO, '_blank', 'noopener')} />
-      </> : DEMO ? <>
+    {/* ---------- account ----------
+        No login is required: everything lives in this browser. A Supabase email+password
+        account is optional and only adds cloud sync across devices (see docs). */}
+    <Section title={DEMO ? t('Demo') : t('Account')}>
+      {DEMO ? <>
         <Row icon="sparkles" iconTint="var(--acc)" title={t('You’re in the demo')} subtitle={t('Example data, stored only in this browser — change anything you like.')} />
         <Row icon="reset" iconTint="var(--blue)" title={t('Reset demo data')} accessory="chevron"
           onClick={() => confirmSheet({ title: t('Reset demo data?'), message: t('Puts the example plan, workouts and weigh-ins back the way they started.'), confirmText: t('Reset'), onConfirm: () => { resetDemo(); nav('/home'); toast(t('Demo data reset')) } })} />
-        <Row icon="rocket" iconTint="var(--indigo)" title={t('Self-host openGym')} subtitle={t('Passkey sign-in, sync across your devices, your own data.')} accessory="chevron"
-          onClick={() => window.open(REPO, '_blank', 'noopener')} />
-      </> : user ? <>
-        <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
-        {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
-        <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
-        <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
-      </> : webauthnOK() ? <>
-        <Row icon="sparkles" iconTint="var(--acc)" title={t('Create passkey profile')} subtitle={t('Keeps your data safe and separate per person.')} accessory="chevron" onClick={registerHere} />
-        <Row icon="person" iconTint="var(--blue)" title={t('Sign in with passkey')} accessory="chevron" onClick={signInHere} />
-      </> : (
-        <Row icon="lock" iconTint="var(--grey)" title={t('Passkeys not supported in this browser.')} />
-      )}
+      </> : <>
+        <Row icon="lock" iconTint="var(--acc)" title={t('No account needed')}
+          subtitle={t('Your training is stored in this browser. Export a backup from Data below anytime.')} />
+        {sbUser && <Row icon="personCircle" iconTint="var(--blue)" title={sbUser.email || t('Cloud account')} subtitle={t('Signed in with email — training syncs across devices.')} />}
+      </>}
+      <Row icon="rocket" iconTint="var(--indigo)" title={t('Get the source')}
+        subtitle={t('Free & open source — run it yourself with your own cloud.')} accessory="chevron"
+        onClick={() => window.open(REPO, '_blank', 'noopener')} />
     </Section>
-    {!user && !DEMO && !MOBILE && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('Guest mode — data lives only in this browser.')}</p>}
+    {!cloud && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('On this device only — data never leaves this browser unless you export it.')}</p>}
+
+    {cloud && <SupabaseCard />}
 
     {/* ---------- general ---------- */}
     <Section title={t('General')} footer={t('Note: switching units only changes the label — logged numbers are not converted.')}>
@@ -120,16 +105,16 @@ export default function Settings() {
 
     {/* ---------- during a workout ---------- */}
     <Section title={t('During a workout')} footer={wakeOK ? t('The screen stays on while a workout is running, so you don’t have to unlock your phone between sets.') : null}>
+      {/* 0 means "no timer at all", and it is a real choice rather than a disabled control:
+          circuits, warm-ups and back-to-back supersets are often trained with no planned rest. */}
       <SelectRow icon="timer" iconTint="var(--orange)" title={t('Rest timer')}
-        value={S.restSec} onChange={v => update(s => { s.restSec = v })}
-        options={[60, 90, 120, 150, 180].map(v => ({ value: v, label: v + 's' }))} />
-      {(wakeOK || !MOBILE) && (
-        <Row icon="sun" iconTint="var(--yellow)" title={t('Keep screen awake')}
-          subtitle={wakeOK ? null : t('Not supported in this browser.')}>
-          <Switch checked={wakeOK && S.keepAwake !== false} disabled={!wakeOK}
-            onChange={v => update(s => { s.keepAwake = v })} />
-        </Row>
-      )}
+        value={S.restSec ?? 90} onChange={v => update(s => { s.restSec = v })}
+        options={[{ value: 0, label: t('No rest') }, ...[60, 90, 120, 150, 180].map(v => ({ value: v, label: v + 's' }))]} />
+      <Row icon="sun" iconTint="var(--yellow)" title={t('Keep screen awake')}
+        subtitle={wakeOK ? null : t('Not supported in this browser.')}>
+        <Switch checked={wakeOK && S.keepAwake !== false} disabled={!wakeOK}
+          onChange={v => update(s => { s.keepAwake = v })} />
+      </Row>
       <Row icon="bell" iconTint="var(--pink)" title={t('Sounds')}>
         <Switch checked={!!S.sound} onChange={v => update(s => { s.sound = v })} />
       </Row>
@@ -143,20 +128,27 @@ export default function Settings() {
       </Row>
     </Section>
 
-    {coachAvailable(config, user, { demo: DEMO, mobile: MOBILE }) && (
-      <Section title={t('Coach')} footer={hasConsent(S)
-        ? t('The Coach designs and adjusts your plan; it never changes anything without your say-so.')
-        : t('An AI coach that can build your plan and adjust it from what you log. Off until you turn it on.')}>
-        <Row icon="sparkles" iconTint="var(--acc)" title={hasConsent(S) ? t('Open the Coach') : t('Meet the Coach')}
-          subtitle={hasConsent(S) ? t('Reviews, plan design, history and controls') : t('See what it would use, then decide')}
-          accessory="chevron" onClick={() => nav('/coach')} />
-      </Section>
-    )}
-
-    {(user || MOBILE) && <NotificationsCard S={S} update={update} toast={toast} />}
+    {/* ---------- injuries ---------- */}
+    <Section title={t('Injuries')} footer={t('Not a medical device — a reminder, so a sore joint is not the thing you forget between sets.')}>
+      <Row icon="shield" iconTint="var(--orange)" title={t('What hurts')}
+        subtitle={t('Pick the joints to watch. You get a warning before a movement that loads one.')} />
+      {/* Wrapped, not scrolled like the Library's filter row: this is a list of switches, and a
+          switch you have to scroll sideways to discover is a switch half the users never set. */}
+      <div className="chips" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+        {JOINTS.map(j => {
+          const on = injuries.includes(j)
+          return <button key={j} className={'chip' + (on ? ' on' : '')}
+            aria-pressed={on}
+            onClick={() => update(s => {
+              const list = s.injuries || []
+              s.injuries = on ? list.filter(x => x !== j) : [...list, j]
+            })}>{t(j)}</button>
+        })}
+      </div>
+    </Section>
 
     {/* ---------- appearance ---------- */}
-    <Section title={t('Appearance')} footer={DEMO || MOBILE ? undefined : t('synced with your profile')}>
+    <Section title={t('Appearance')}>
       <Row icon="moon" iconTint="var(--indigo)" title={t('Theme')}>
         <Segmented
           className="seg-inline"
@@ -185,32 +177,41 @@ export default function Settings() {
       </div>
     </Section>
 
-    {/* ---------- data: fill it, bring things over, back it up, wipe it ---------- */}
+    {/* ---------- data: fill it, bring things over, hand it to an AI, back it up, wipe it ---------- */}
     <Section title={t('Data')}>
       <Row icon="sparkles" iconTint="var(--acc)" title={t('Load starter plan (PPL)')} accessory="chevron" onClick={loadStarterPlan} />
       <Row icon="shuffle" iconTint="var(--teal)" title={t('Import from another app')}
         subtitle={t('FitNotes, Strong, Hevy — or body weight from Apple Health')}
         accessory="chevron" onClick={() => importRef.current.click()} />
-      <Row icon="upload" iconTint="var(--blue)" title={t('Import backup')} accessory="chevron" onClick={() => fileRef.current.click()} />
+      <Row icon="download" iconTint="var(--teal)" title={t('Export by exercise (CSV/JSON)')}
+        subtitle={t('Set-by-set history of one exercise with dates')}
+        accessory="chevron" onClick={exerciseExportPicker} />
+      <Row icon="download" iconTint="var(--teal)" title={t('Export by day (CSV/JSON)')}
+        subtitle={t('Every set logged on one day')}
+        accessory="chevron" onClick={dayExportPicker} />
+      <Row icon="sparkles" iconTint="var(--purple)" title={t('Export for AI (JSON)')}
+        subtitle={t('Everything — plan, schedule and full history — in one file an AI can read.')}
+        accessory="chevron" onClick={() => doExportAi('json')} />
+      <Row icon="sparkles" iconTint="var(--purple)" title={t('Export for AI (NDJSON)')}
+        subtitle={t('Same history, one set per line — easiest to paste into a chat.')}
+        accessory="chevron" onClick={() => doExportAi('ndjson')} />
+      <Row icon="upload" iconTint="var(--blue)" title={t('Import backup or AI export')} accessory="chevron" onClick={() => fileRef.current.click()} />
       <Row icon="download" iconTint="var(--blue)" title={t('Export backup (JSON)')} accessory="chevron" onClick={doExport} />
-      {/* Also drops anything the Coach is holding server-side: a wipe that leaves a pending
-          proposal on the server behind would be a wipe in name only. */}
-      <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger onClick={() => confirmSheet({ title: t('Reset everything?'), message: t('Deletes your plan, workouts and body weight on this device. This cannot be undone.'), confirmText: t('Delete everything'), danger: true, onConfirm: () => { if (user) forgetCoach().catch(() => {}); replaceState(JSON.parse(JSON.stringify(DEF)), true); nav('/home'); toast(t('All data reset')) } })} />
+      <Row icon="trash" iconTint="var(--red)" title={t('Reset everything')} danger onClick={() => confirmSheet({ title: t('Reset everything?'), message: t('Deletes your plan, workouts and body weight on this device. This cannot be undone.'), confirmText: t('Delete everything'), danger: true, onConfirm: () => { replaceState(clone(DEF), true); nav('/home'); toast(t('All data reset')) } })} />
     </Section>
-    <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={doImport} />
+    <input ref={fileRef} type="file" accept=".json,.ndjson,application/json" style={{ display: 'none' }} onChange={doImport} />
     {/* Reset after reading so picking the same file twice still fires onChange. */}
     <input ref={importRef} type="file" accept=".csv,.xml,text/csv,text/xml" style={{ display: 'none' }}
       onChange={ev => { const f = ev.target.files[0]; if (f) importFromApp(f); ev.target.value = '' }} />
 
-    {/* "Add to Home screen" makes no sense inside the native app */}
-    {!MOBILE && <Section title={t('Tip')}>
+    <Section title={t('Tip')}>
       <Row icon="lightbulb" iconTint="var(--yellow)"
         title={IS_ANDROID ? t('In Chrome: ⋮ menu → Add to Home screen') : t('In Safari: Share → Add to Home Screen')}
-        subtitle={t('to install openGym as a full-screen app.') + ' ' + (user ? t('Your data syncs with your profile — sign in anywhere to see it.') : t('Guest data stays on this device — export a backup now and then!'))} />
-    </Section>}
+        subtitle={t('to install Personal Open Gym as a full-screen app.') + ' ' + t('Data stays on this device — export a backup now and then!')} />
+    </Section>
 
     <div className="dim small" style={{ textAlign: 'center', marginTop: 4, lineHeight: 1.6 }}>
-      openGym · {t('free & open source (AGPL v3)')}<br />
+      Personal Open Gym · {t('free & open source (AGPL v3)')}<br />
       <a href="https://github.com/DuarteSantos8/openGym" target="_blank" rel="noopener">source code</a> · exercise data: hasaneyldrm/exercises-dataset (CC)
     </div>
   </div>
@@ -252,111 +253,67 @@ function effortHelpSheet() {
   </>)
 }
 
-function NotificationsCard({ S, update, toast }) {
-  if (MOBILE) return <MobileReminderCard S={S} update={update} toast={toast} />
-  return <PushCard S={S} update={update} toast={toast} />
-}
-
-// Mobile build: the reminder is a native local notification scheduled on planned weekdays —
-// no push server involved. The schedule itself is (re)synced by the store on every persist;
-// this card only owns the OS permission prompt when the switch turns on.
-function MobileReminderCard({ S, update, toast }) {
-  const setReminder = patch => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), ...patch, tz: localTZ() } })
-  const toggle = async () => {
-    const on = !S.reminder?.on
-    if (on) {
-      const ok = await syncReminder({ ...S, reminder: { ...(S.reminder || DEF.reminder), on: true } }, true)
-      if (!ok) { toast(t('Could not change notification settings')); return }
-    }
-    setReminder({ on })
-  }
-  return (
-    <Section title={t('Notifications')}
-      footer={S.reminder?.on ? t('Reminds you at this time on days that have a routine planned.') : null}>
-      <Row icon="calendar" iconTint="var(--orange)" title={t('Workout day reminder')}>
-        <Switch checked={!!S.reminder?.on} onChange={toggle} />
-      </Row>
-      {S.reminder?.on && (
-        <Row icon="clock" iconTint="var(--purple)" title={t('Reminder time')}>
-          <input type="time" className="timef" value={S.reminder?.time || DEF.reminder.time}
-            onChange={e => setReminder({ time: e.target.value })} />
-        </Row>
-      )}
-    </Section>
-  )
-}
-
-function PushCard({ S, update, toast }) {
-  const [on, setOn] = useState(false)
+// Optional multi-device sync. Only rendered when VITE_SUPABASE_* is configured; otherwise
+// the app is purely local and this card never appears.
+function SupabaseCard() {
+  const toast = useUI(s => s.toast)
+  const pullState = useStore(s => s.pullState)
+  const pushState = useStore(s => s.pushState)
+  const setSbUser = useStore(s => s.setSbUser)
+  const sbSignOutStore = useStore(s => s.sbSignOut)
+  const sbUser = useStore(s => s.sbUser)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
-  const supported = pushSupported()
-
-  useEffect(() => {
-    if (!supported) return
-    navigator.serviceWorker.ready.then(reg => reg.pushManager.getSubscription()).then(sub => setOn(!!sub)).catch(() => {})
-  }, [supported])
-
-  const toggle = async v => {
+  const [err, setErr] = useState('')
+  const go = async (mode) => {
+    setErr('')
+    if (!email.trim() || !password) { setErr(t('Enter email and password')); return }
+    if (password.length < 6) { setErr(t('Password needs at least 6 characters')); return }
     setBusy(true)
     try {
-      if (!v) { await disablePush(); setOn(false); toast(t('Notifications off')) }
-      else { await enablePush(); setOn(true); toast(t('Notifications on')) }
-    } catch (e) { toast(e.message || t('Could not change notification settings')) }
+      const session = mode === 'up' ? await sbSignUp(email.trim(), password) : await sbSignIn(email.trim(), password)
+      if (session?.user) {
+        setSbUser(session.user)
+        if (mode === 'up') {
+          if (hasData(useStore.getState().S)) { await pushState(); toast(t('Account created — this device pushed to cloud')) }
+          else { await pullState(); toast(t('Welcome — cloud sync is on')) }
+        } else { await pullState(); toast(t('Cloud sync on — pulled latest')) }
+        setPassword('')
+      } else {
+        // Email confirmation ON in Supabase: no session until the link is clicked.
+        toast(t('Account created — check your email to confirm, then sign in'))
+      }
+    } catch (e) { setErr(e.message ? t(e.message) : t('Sign-in failed')) }
     setBusy(false)
   }
-  const test = async () => {
-    try { await sendTestPush(); toast(t('Test sent — should arrive any second')) }
-    catch (e) { toast(e.message || t('Test failed')) }
+  const out = async () => {
+    await sbSignOutStore()
+    toast(t('Cloud sync off on this device — local data stays'))
   }
-
-  if (!supported) return (
-    <Section title={t('Notifications')}>
-      <Row icon="bellSlash" iconTint="var(--grey)" title={t('Not supported in this browser.')} />
+  const syncNow = async () => {
+    setBusy(true)
+    try { await pullState(); await pushState(); toast(t('Synced with cloud')) }
+    catch (e) { toast(e.message ? t(e.message) : t('Sync failed')) }
+    setBusy(false)
+  }
+  return (
+    <Section title={t('Cloud sync (Supabase)')} footer={t('Same login on every device = same history. Email + password verified on the server — no Google/GitHub OAuth. Offline still works locally.')}>
+      {sbUser ? <>
+        <Row icon="shuffle" iconTint="var(--blue)" title={t('Sync now')} subtitle={t('Pull latest, then push this device.')} accessory="chevron" onClick={syncNow} />
+        <Row icon="signOut" iconTint="var(--red)" title={t('Sign out of cloud')} subtitle={t('Stops syncing here; your data stays on this device.')} danger onClick={out} />
+      </> : <>
+        <div className="muted small" style={{ marginBottom: 10 }}>{t('Sign in with email to sync your training across phone, tablet and PC. New here? Create account with the same form.')}</div>
+        <TextField value={email} onChange={e => setEmail(e.target.value)} placeholder="email" autoCapitalize="none" autoCorrect="off" inputMode="email" maxLength={120} />
+        <div style={{ height: 8 }} />
+        <TextField value={password} onChange={e => setPassword(e.target.value)} placeholder={t('Password (min 6)')} maxLength={120} type="password" />
+        {err && <div className="small" style={{ color: 'var(--red)', marginTop: 8 }}>{err}</div>}
+        <div style={{ height: 10 }} />
+        <div className="row" style={{ gap: 8 }}>
+          <Button style={{ flex: 1 }} disabled={busy} onClick={() => go('in')}>{t('Sign in')}</Button>
+          <Button style={{ flex: 1 }} variant="primary" disabled={busy} onClick={() => go('up')}>{t('Create account')}</Button>
+        </div>
+      </>}
     </Section>
   )
-
-  return <>
-    <Section
-      title={t('Notifications')}
-      footer={on && S.reminder?.on
-        ? t("Only sent on days you have a routine planned and haven't logged a workout yet.") +
-          (S.reminder?.tz ? ' ' + t('Timezone: {0} (auto-detected, updates if you travel).', S.reminder.tz) : '')
-        : null}
-    >
-      <Row icon="bell" iconTint="var(--red)" title={t('Push notifications')} subtitle={t('Rest-timer alerts, even if openGym is closed.')}>
-        <Switch checked={on} disabled={busy} onChange={toggle} />
-      </Row>
-      {on && (
-        <Row icon="calendar" iconTint="var(--orange)" title={t('Workout day reminder')}>
-          <Switch checked={!!S.reminder?.on} onChange={() => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), on: !s.reminder?.on, tz: localTZ() } })} />
-        </Row>
-      )}
-      {on && S.reminder?.on && (
-        <Row icon="clock" iconTint="var(--purple)" title={t('Reminder time')}>
-          <input type="time" className="timef" value={S.reminder?.time || DEF.reminder.time}
-            onChange={e => update(s => { s.reminder = { ...(s.reminder || DEF.reminder), time: e.target.value, tz: localTZ() } })} />
-        </Row>
-      )}
-    </Section>
-    {on && <div style={{ marginTop: -12, marginBottom: 22 }}><Button size="sm" icon="bell" onClick={test}>{t('Send test notification')}</Button></div>}
-  </>
-}
-
-function RegisterInline({ close, setUser, pushState, pullState, toast }) {
-  const nameRef = useRef(null)
-  const go = async () => {
-    const n = (nameRef.current.value || '').trim()
-    if (!n) { toast(t('Enter a name')); return }
-    try {
-      const u = await passkeyRegister(n); setUser(u); close()
-      if (hasData(useStore.getState().S)) { await pushState(); toast(t('Profile created — data moved into it')) }
-      else { await pullState(); toast(t('Welcome, {0}', u.name)) }
-    } catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast(e.message || t('Registration failed')) }
-  }
-  return <>
-    <h3>{t('Create your profile')}</h3>
-    <div className="muted small" style={{ marginBottom: 14 }}>{t('Pick a name, then confirm with your device.')}</div>
-    <TextField ref={nameRef} placeholder={t('Your name')} maxLength={40} />
-    <div style={{ height: 12 }} /><Button variant="primary" onClick={go}>{t('Create passkey')}</Button>
-  </>
 }

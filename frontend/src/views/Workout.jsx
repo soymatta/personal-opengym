@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
-import { exOr } from '../lib/exercises.js'
+import { exOr, exName } from '../lib/exercises.js'
+import { riskFor } from '../lib/injuries.js'
 import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, setsDoneActive, supersetUnits, unitOf, setLabel, modeOf, EFFORT, effortOf, stepEffort, capEffort } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t } from '../lib/i18n.js'
-import { api } from '../lib/api.js'
 import Media from '../components/Media.jsx'
 import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, topWeightSheet, finishWorkout, workoutCompleteSheet, confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
@@ -69,6 +69,9 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
   // What the progression policy decided for this session, and why (issue #17). Computed when
   // the session was built so the reason matches the numbers already in the rows.
   const plan = entry.plan
+  // The injured joints this movement loads, if any. Empty until the user marks something in
+  // Settings, and empty for the many exercises that spare it.
+  const risks = riskFor(ex, S.injuries)
   const col1 = cardio ? { f: 'min', step: 1, dec: false, hd: t('Duration (min)') }
     : timed ? { f: 'sec', step: 5, dec: false, hd: t('Seconds') }
       : { f: 'w', step: 2.5, dec: true, hd: t('Weight ({0})', S.unit) }
@@ -101,7 +104,7 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
   return <>
     <Media ex={ex} key={entry.id} compact={compact} minimizable />
     <div className="row between" style={{ marginBottom: 6 }}>
-      <div style={{ fontSize: compact ? 17 : 20, fontWeight: 600, letterSpacing: '-.02em', textTransform: 'capitalize', lineHeight: 1.2 }}>{ex.n}</div>
+      <div style={{ fontSize: compact ? 17 : 20, fontWeight: 600, letterSpacing: '-.02em', lineHeight: 1.2 }}>{exName(ex)}</div>
       <button className="iconbtn" aria-label={t('Details')} onClick={() => exerciseDetailSheet(ex)}><Icon name="info" /></button>
     </div>
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -111,6 +114,16 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
       {best > 0 && <span className="tag nocap">{t('Best:')} {fmtNum(best)} {S.unit}</span>}
     </div>
     {last && <div className="small dim" style={{ marginBottom: 4 }}>{t('Last time')} ({fmtDate(last.d)}): {last.sets.map(s => setLabel(entry.id, s, last.target)).join(', ')}</div>}
+    {/* One line per injured joint this movement loads, and nothing at all when it spares them —
+        a warning that fires on everything is a warning nobody reads. It sits above the set rows
+        because the decision it informs is "do I load this today", which comes before the first
+        set, not after it. The joint rides in a tag instead of inside the sentence: "your knee"
+        becomes "ta épaule" in French and "deine Schulter" in German, so a sentence with the name
+        in the middle is wrong in half the languages the app speaks. */}
+    {risks.map(r => <div className="progline warn" key={r.joint}>
+      <Icon name="shield" />
+      <span>{t('Careful — this movement loads an injured joint')} <span className="tag">{t(r.joint)}</span></span>
+    </div>)}
     {plan && plan.why && plan.kind !== 'off' && <div className={'progline' + (plan.kind === 'deload' ? ' warn' : '')}>
       <Icon name={plan.kind === 'up' ? 'arrowUp' : plan.kind === 'deload' ? 'arrowDown' : 'lightbulb'} />
       <span>{t(...plan.why)}</span>
@@ -176,7 +189,7 @@ function ActiveWorkout() {
   // behave exactly as they do for a reps set.
   const startTimed = (idx, i) => {
     const e = A.entries[idx]
-    useUI.getState().startWork(e.sets[i].sec || 45, exOr(e.id).n, elapsed => {
+    useUI.getState().startWork(e.sets[i].sec || 45, exName(e.id), elapsed => {
       mutEntry(idx, en => { en.sets[i].sec = elapsed })
       if (!useStore.getState().S.active.entries[idx].sets[i].done) toggle(idx, i)
     })
@@ -209,40 +222,13 @@ function ActiveWorkout() {
     else if (exJustDone && m === 'time') useUI.getState().toast(t('Hold logged'))
   }
 
-  // Live-presence heartbeat so the admin dashboard can show who's training now. Signed-in only —
-  // guests have no server session. Reads fresh state each tick so progress stays current.
-  useEffect(() => {
-    if (!useStore.getState().user) return
-    let stopped = false
-    const ping = active => {
-      const A2 = useStore.getState().S.active
-      if (!A2) return
-      const u = supersetUnits(A2.entries)
-      const c = Math.min(A2.cur, Math.max(0, A2.entries.length - 1))
-      const ui = u.findIndex(x => x.includes(c))
-      const tot = A2.entries.reduce((n, e) => n + e.sets.length, 0)
-      api('/api/activity', { method: 'POST', body: JSON.stringify({
-        active, name: A2.name, exIdx: ui + 1, exTotal: u.length,
-        setsDone: setsDoneActive(A2), setsTotal: tot, startedAt: A2.start
-      }) }).catch(() => {})
-    }
-    ping(true)
-    const iv = setInterval(() => { if (!stopped) ping(true) }, 20000)
-    return () => {
-      stopped = true; clearInterval(iv)
-      // best-effort "left" signal: sendBeacon survives a tab close, fetch covers in-app nav
-      try { navigator.sendBeacon?.('/api/activity', new Blob([JSON.stringify({ active: false })], { type: 'application/json' })) } catch { /* */ }
-      api('/api/activity', { method: 'POST', body: JSON.stringify({ active: false }) }).catch(() => {})
-    }
-  }, [])
-
   return <div className="narrow">
     <div className="hdr">
       <button className="iconbtn" aria-label={t('Discard')} onClick={() => confirmSheet({ title: t('Discard workout?'), message: t('The sets you logged in this session will be lost.'), confirmText: t('Discard'), danger: true, onConfirm: () => { update(s => { s.active = null }); stopRest(); nav('/home') } })}><Icon name="xmark" /></button>
       <div style={{ textAlign: 'center' }}><div style={{ fontWeight: 600 }}>{A.name}</div><div className="sub"><Elapsed start={A.start} /> · {t('{0} sets', done + '/' + total)}</div></div>
       <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
     </div>
-    <div className="wprog"><i style={{ width: (total ? done / total * 100 : 0) + '%' }} /></div>
+    <div className="wprog"><i style={{ transform: 'scaleX(' + (total ? done / total : 0) + ')' }} /></div>
 
     {A.entries.length ? <>
       <div className="muted small" style={{ marginBottom: 6 }}>{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}</div>

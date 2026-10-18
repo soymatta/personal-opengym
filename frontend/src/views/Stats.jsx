@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
-import { EXIDX } from '../lib/exercises.js'
+import { EXIDX, exName } from '../lib/exercises.js'
 import { lastBW, streakWeeks, setLabel, modeOf, effortOf } from '../lib/history.js'
 import { fmtNum, fmtDate, fmtVol, todayISO, weekKey } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
-import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor, exerciseHistorySheet, exerciseExportPicker, dayExportPicker } from '../sheets.jsx'
+import { exerciseRecords, exerciseVolumeSeries, buildExerciseExport, downloadFile, exerciseFilename } from '../lib/history-export.js'
+import { MOBILE, shareExport } from '../lib/mobile.js'
 import LineChart from '../components/LineChart.jsx'
 import Heatmap from '../components/Heatmap.jsx'
 import Icon from '../components/Icon.jsx'
@@ -147,7 +149,7 @@ export default function Stats() {
   const bwDelta30 = bw30.length > 1 ? bw30[bw30.length - 1].w - bw30[0].w : null
   const monthW = S.workouts.filter(w => w.d.slice(0, 7) === todayISO().slice(0, 7)).length
 
-  const exHist = [...new Set(S.workouts.flatMap(w => w.entries.map(e => e.id)))].filter(id => EXIDX[id]).sort((a, b) => EXIDX[a].n < EXIDX[b].n ? -1 : 1)
+  const exHist = [...new Set(S.workouts.flatMap(w => w.entries.map(e => e.id)))].filter(id => EXIDX[id]).sort((a, b) => exName(a).localeCompare(exName(b)))
   const curEx = exId && exHist.includes(exId) ? exId : exHist[0] || null
   // How this exercise was logged most recently decides what the curve means: top weight,
   // longest hold or top speed. Sets logged in another mode lack the field and score 0, so a
@@ -193,6 +195,20 @@ export default function Stats() {
   const exOpts = [{ value: 'top', label: t('Top set') }]
   if (showE1) exOpts.push({ value: 'e1rm', label: t('Est. 1RM') })
   if (showEff) exOpts.push({ value: 'effort', label: t('Effort') })
+  exOpts.push({ value: 'vol', label: t('Volume') })
+  const volPts = curEx ? exerciseVolumeSeries(S, curEx) : []
+  const showVol = volPts.length > 0
+  const onVol = exMetric === 'vol'
+  const records = exerciseRecords(S).slice(0, 8)
+  const exportCur = (ext) => {
+    if (!curEx) return
+    const b = buildExerciseExport(S, curEx)
+    if (!b.rows.length) return
+    const filename = exerciseFilename(S, curEx, ext)
+    const content = ext === 'csv' ? b.csv : JSON.stringify(b, null, 2)
+    if (MOBILE) { shareExport(content, filename).catch(() => {}); return }
+    downloadFile(content, filename, ext === 'csv' ? 'text/csv' : 'application/json')
+  }
 
   return <>
     <div className="hdr"><div><h1>{t('Stats')}</h1><div className="sub">{t('Progress & history')}</div></div>
@@ -232,29 +248,49 @@ export default function Stats() {
         {exHist.length ? <>
           <div className="sect-b" style={{ marginBottom: 10 }}>
             <SelectRow title={t('Exercise')} sheetTitle={t('Exercise progress')} value={curEx} onChange={setExId}
-              options={exHist.map(id => ({ value: id, label: EXIDX[id].n }))} />
+              options={exHist.map(id => ({ value: id, label: exName(id) }))} />
           </div>
-          {exOpts.length > 1 && <Segmented className="seg-range" value={onEff ? 'effort' : onE1 ? 'e1rm' : 'top'} onChange={setExMetric} options={exOpts} />}
+          {exOpts.length > 1 && <Segmented className="seg-range" value={onVol ? 'vol' : onEff ? 'effort' : onE1 ? 'e1rm' : 'top'} onChange={setExMetric} options={exOpts} />}
           <div className="chart">
-            {onEff
+            {onVol
+              ? <LineChart points={volPts} h={150} unit={S.unit} color="var(--acc)" />
+              : onEff
               ? <LineChart points={effPts} h={150} unit={hd} color="var(--yellow)" invert={kind === 'rir'} />
               : <LineChart points={onE1 ? e1Pts.map(p => ({ t: p.t, y: p.y, d: p.d })) : topPts} h={150} unit={exUnit} color="var(--blue)" />}
           </div>
           <div style={{ marginTop: 8 }}>{exList.map((p, i) => <div key={i} className="row between small" style={{ padding: '6px 0', borderBottom: 'var(--hair) solid var(--sep)' }}>
             <span className="muted">{fmtDate(p.d, true)}</span><span>{p.sets.map(s => setLabel(curEx, s, p.target)).join('  ')}</span></div>)}</div>
           <div className="small dim" style={{ marginTop: 8 }}>
-            {onEff ? t('Average effort per workout') : onE1 ? t('Estimated 1RM per workout') : curCardio ? t('Top speed per workout') : curTimed ? t('Longest hold per workout') : t('Best set weight per workout')}
-            {onEff ? '' : <> · {t('Best:')}{' '}<b className="accent">{fmtNum(onE1 ? e1Best.est : exBest)} {onE1 ? S.unit : exUnit}</b></>}
+            {onVol ? t('Total volume per workout (sets × weight)') : onEff ? t('Average effort per workout') : onE1 ? t('Estimated 1RM per workout') : curCardio ? t('Top speed per workout') : curTimed ? t('Longest hold per workout') : t('Best set weight per workout')}
+            {!onEff && !onVol ? <> · {t('Best:')}{' '}<b className="accent">{fmtNum(onE1 ? e1Best.est : exBest)} {onE1 ? S.unit : exUnit}</b></> : null}
           </div>
           {onE1 && <div className="small dim" style={{ marginTop: 4 }}>
             {t('Best estimate from {0} on {1} — an estimate, not a tested max.', fmtNum(e1Best.w) + ' ' + S.unit + ' × ' + e1Best.r, fmtDate(e1Best.d, true))}
           </div>}
-          {!onEff && !onE1 && showEff && <div className="small dim" style={{ marginTop: 4 }}>
+          {!onEff && !onE1 && !onVol && showEff && <div className="small dim" style={{ marginTop: 4 }}>
             {t('A fuller dot means less left in the tank — the same weight at a lower {0} is progress the line alone does not show.', hd)}
           </div>}
+          <div className="row" style={{ gap: 8, marginTop: 12 }}>
+            <Button size="sm" style={{ flex: 1 }} onClick={() => curEx && exerciseHistorySheet(curEx)}>{t('Full history')}</Button>
+            <Button size="sm" icon="download" style={{ flex: 1 }} onClick={() => exportCur('csv')}>CSV</Button>
+            <Button size="sm" icon="download" style={{ flex: 1 }} onClick={() => exportCur('json')}>JSON</Button>
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            <Button size="sm" variant="ghost" style={{ flex: 1 }} onClick={exerciseExportPicker}>{t('All exercises…')}</Button>
+            <Button size="sm" variant="ghost" style={{ flex: 1 }} onClick={dayExportPicker}>{t('By day…')}</Button>
+          </div>
         </> : <div className="muted small">{t('Finish your first workout to see progress curves here.')}</div>}
       </div>
     </div>
+
+    {records.length > 0 && <div className="card">
+      <h2>{t('Records')}</h2>
+      <div className="muted small" style={{ marginBottom: 8 }}>{t('Best logged set per exercise — tap to see every set behind it.')}</div>
+      {records.map(r => <div key={r.id} className="row between small item" style={{ padding: '8px 0', borderBottom: 'var(--hair) solid var(--sep)', cursor: 'pointer' }} onClick={() => exerciseHistorySheet(r.id)}>
+        <span style={{ fontWeight: 600 }}>{EXIDX[r.id] ? exName(r.id) : r.name}</span>
+        <span><b className="accent">{fmtNum(r.bestW)} {S.unit}</b> <span className="dim">· {fmtDate(r.bestWDate, true)} · {t('{0} sets', r.sets)}</span></span>
+      </div>)}
+    </div>}
 
     {S.workouts.length > 0 && <>
       <div className="row between" style={{ marginBottom: 10 }}>

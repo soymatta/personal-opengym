@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### PWA-only, local-first, AI-free
+
+This fork removed everything that stood between you and a static app that runs in a browser.
+
+- 🗑️ **The Node/Docker backend is gone.** No `api/`, no `web/`, no `docker-compose.yml`, no
+  `.env` to configure, no database. The whole app is `frontend/dist` — plain static files you can
+  host anywhere (Vercel config included).
+- 🚪 **No login gate.** The app boots straight in. Passkeys, the admin dashboard, invite codes and
+  push notifications are removed along with the server they depended on. Every install is usable
+  immediately, with all data in the browser.
+- 🤖 **The AI Coach is gone.** No model ships in the app and nothing is sent anywhere. The
+  deterministic progression engine still computes every session's target.
+- 📤 **AI-friendly export instead.** Settings → Data exports your whole training history as one
+  clean JSON document — profile, routines, week schedule, and every set flattened to one record
+  per line (weight, reps/seconds, RIR/RPE, volume, PR) with a self-describing schema — or as
+  **NDJSON**, one set per line. Paste it into whatever AI you like; import it back losslessly.
+  (Upstream's per-exercise and per-day CSV/JSON exports stay.)
+- ☁️ **Cloud sync is now optional Supabase** (email + password), shown in Settings only when
+  `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` are set. Local storage stays the source of truth;
+  offline still works.
+- 🧹 **Docs match reality** — README, CONTRIBUTING and SECURITY rewritten around the static app;
+  the Capacitor/internet-window and self-hosting guides are gone.
+
 ### The AI Coach
 
 openGym could always progress a plan. It could never *write* one, and it never looked at the

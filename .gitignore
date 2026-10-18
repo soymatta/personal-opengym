@@ -1,8 +1,8 @@
-# Exercise media — fetched on first `docker compose up` (or via scripts/fetch-media.sh)
+# Exercise media — large binaries, served separately, never committed
 media/img/
 media/gif/
 
-# Runtime data — users, passkeys, per-user state, session secret
+# Runtime data (local dev only)
 data/
 
 # Local config
@@ -18,5 +18,19 @@ node_modules/
 .claude/
 .codex/
 CLAUDE.md
-AGENTS.md
 graphify-out/
+.opencode/
+# Agent session transcripts: useful while the session runs, noise in every later `git status`
+session-*.md
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Downloads from the app itself — your own training data, not project files.
+# Every export the app writes is named opengym-* (plan, routine, exercise, day, AI export),
+# and they land wherever the browser saves them; this covers a save straight into the repo root.
+/opengym-*.json
+/opengym-*.csv

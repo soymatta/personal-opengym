@@ -1,5 +1,6 @@
 import { EXDB } from './exercises-data.js'
-import { t } from './i18n.js'
+import { t, getLang } from './i18n.js'
+import ES from '../names/es.js'
 
 export { EXDB }
 export const EXIDX = {}
@@ -43,3 +44,16 @@ export const isCardio = idOrEx => (typeof idOrEx === 'string' ? EXIDX[idOrEx] : 
 // down on the first `ex.n`.
 export const exOr = id => EXIDX[id] ||
   { id, n: t('Unknown exercise'), bp: '', tg: '', eq: '', sm: [], st: [], missing: true }
+
+// What to call an exercise on screen. The dataset ships English names, so src/names/<lang>.js
+// holds the hand-written translations; anything without an entry keeps its English name rather
+// than an empty row. Sentence case either way — the dataset's names are all lowercase, so the
+// display sites no longer need `text-transform: capitalize` (which would capitalise every word
+// of a Spanish name: "Press De Banca Con Barra").
+const NAMES = { es: ES }
+export function exName(exOrId) {
+  const id = typeof exOrId === 'string' ? exOrId : exOrId?.id
+  const ex = typeof exOrId === 'string' ? exOr(exOrId) : exOrId
+  const n = (id && NAMES[getLang()]?.[id]) || ex?.n || ''
+  return n.charAt(0).toUpperCase() + n.slice(1)
+}

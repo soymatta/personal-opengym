@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
-import { EXDB, EXIDX, BODYPARTS, isCardio, allExercises, equipmentOf } from './lib/exercises.js'
+import { EXDB, EXIDX, BODYPARTS, isCardio, allExercises, equipmentOf, exName } from './lib/exercises.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
 import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
-import { starterRoutines } from './lib/starter.js'
+import { planOf, applyPlan } from './lib/plans.js'
 import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
@@ -16,7 +16,8 @@ import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import { loadOfWorkouts } from './lib/muscles.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
-import { buildPlanBundle, parsePlan, mergePlan, printPlan } from './lib/plan-share.js'
+import { buildPlanBundle, parsePlan, mergePlan, printPlan, routineFromSession } from './lib/plan-share.js'
+import { exerciseRows, dayRows, buildExerciseExport, buildDayExport, downloadFile, exerciseFilename, dayFilename, safeName } from './lib/history-export.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC } from './lib/progression.js'
 import { MOBILE, shareExport } from './lib/mobile.js'
@@ -42,15 +43,29 @@ export function confirmSheet(opts) {
   ui().openSheet(close => <ConfirmDialog {...opts} close={close} />, { kind: 'center' })
 }
 
-/* ============================ starter plan ============================ */
-export function loadStarterPlan() {
-  const [push, pull, legs] = starterRoutines()
-  update(st => {
-    st.routines.push(push, pull, legs)
-    st.week[1] = push.id; st.week[3] = pull.id; st.week[5] = legs.id
+/* ============================ ready-made plans ============================ */
+// Loading a plan adds its routines and takes over the week. When there is already something
+// to lose it asks first and spells out what happens: the routines you had are kept, the
+// schedule is the part that gets replaced.
+export function loadPlan(key) {
+  const plan = planOf(key)
+  if (!plan) return
+  const run = () => {
+    update(s => { applyPlan(s, plan) })
+    toast(t('Plan loaded — check your week'))
+  }
+  const st = S()
+  const occupied = (st.routines || []).length > 0 || Object.keys(st.week || {}).length > 0
+  if (!occupied) { run(); return }
+  confirmSheet({
+    title: t('Load “{0}”?', t(plan.name)),
+    message: t('Adds {0} routines and replaces your current weekly schedule. Nothing else is deleted.', plan.routines.length),
+    confirmText: t('Load'),
+    onConfirm: run
   })
-  toast(t('Starter plan loaded — Mon Push · Wed Pull · Fri Legs'))
 }
+// The action the Settings row and the two empty states already point at.
+export const loadStarterPlan = () => loadPlan('ppl')
 
 /* ============================ weight picker (shared: body weight + goal) ============================ */
 // Fixed range, not a moving window — a window that resizes itself mid-drag (the previous
@@ -285,7 +300,7 @@ function ExerciseDetail({ ex, close }) {
   const last = lastEntryFor(st, ex.id)
   const best = bestWeightFor(st, ex.id)
   return <>
-    <h3 className="capitalize">{ex.n}</h3>
+    <h3>{exName(ex)}</h3>
     <Media ex={ex} />
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '10px 0' }}>
       <span className="tag acc">{t(ex.bp)}</span>
@@ -319,12 +334,12 @@ function AddToRoutine({ ex, close }) {
         if (r) r.ex.push({ id: ex.id, ...cfg })
       })
       const r = isNew ? S().routines[S().routines.length - 1] : st.routines.find(x => x.id === rid)
-      toast(t('“{0}” added to {1}', ex.n, r ? r.name : t('routine')))
+      toast(t('“{0}” added to {1}', exName(ex), r ? r.name : t('routine')))
       if (isNew && r) nav('/plan/r/' + r.id)
     }, null, isNew ? null : st.routines.find(x => x.id === rid))
   }
   return <>
-    <h3 className="capitalize">{t('Add “{0}”', ex.n)}</h3>
+    <h3>{t('Add “{0}”', exName(ex))}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{t('Pick a routine — sets, reps & weight come next.')}</div>
     <div className="list">
       {st.routines.map(r => <div key={r.id} className="item" onClick={() => pick(r.id)}>
@@ -383,7 +398,7 @@ export const customExSheet = (existing, onDone, prefill) => ui().openSheet(close
 export function deleteCustomEx(ex, afterDelete) {
   if (S().active?.entries.some(e => e.id === ex.id)) { toast(t('Finish your current workout first')); return }
   confirmSheet({
-    title: t('Delete “{0}”?', ex.n),
+    title: t('Delete “{0}”?', exName(ex)),
     message: t('It will be removed from your routines. Already-logged workouts keep their sets.'),
     confirmText: t('Delete'), danger: true,
     onConfirm: () => {
@@ -419,8 +434,10 @@ function ExercisePicker({ onPick, close }) {
   const all = allExercises(st)
   let base = all.filter(e =>
     (bp === '★' ? usage[e.id] : (!bp || e.bp === bp)) &&
-    (!ql || e.n.toLowerCase().includes(ql) || e.tg.includes(ql) || e.eq.includes(ql) || (e.desc || '').toLowerCase().includes(ql)))
-  if (bp === '★') base = [...base].sort((a, b) => (usage[b.id] - usage[a.id]) || (a.n < b.n ? -1 : 1))
+    // Both names are searched: someone who switched to Spanish may still type "squat", and
+    // someone who never left English must not lose an exercise that now shows in Spanish.
+    (!ql || exName(e).toLowerCase().includes(ql) || e.n.toLowerCase().includes(ql) || e.tg.includes(ql) || e.eq.includes(ql) || (e.desc || '').toLowerCase().includes(ql)))
+  if (bp === '★') base = [...base].sort((a, b) => (usage[b.id] - usage[a.id]) || exName(a).localeCompare(exName(b)))
   const eqOpts = equipmentOf(base)
   // Drop the equipment filter if the search narrowed it away, so you never hit a dead end.
   const eqOn = eqOpts.includes(eq) ? eq : ''
@@ -445,7 +462,7 @@ function ExercisePicker({ onPick, close }) {
         <div className="grow"><div className="tt">{t('Create your own exercise')}</div><div className="ss">{t('name + body part, no animation')}</div></div><Icon name="plus" className="chev" />
       </div>}
       {f.slice(0, shown).map(e => <div key={e.id} className="item" onClick={() => onPick(e)}>
-        <Thumb ex={e} /><div className="grow"><div className="tt capitalize">{e.n}</div><div className="ss capitalize">{t(e.tg || e.bp)} · {t(e.eq)}</div></div>
+        <Thumb ex={e} /><div className="grow"><div className="tt">{exName(e)}</div><div className="ss capitalize">{t(e.tg || e.bp)} · {t(e.eq)}</div></div>
         {usage[e.id] && <span className="tag acc"><Icon name="starFill" /></span>}<Icon name="plus" className="chev" />
       </div>)}
       {f.length === 0 && bp === '★' && <div className="empty">{t('Nothing chosen yet — add exercises and they’ll show up here.')}</div>}
@@ -509,7 +526,7 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine }) {
     }
   }
   return <>
-    <h3 className="capitalize">{ex.n}</h3>
+    <h3>{exName(ex)}</h3>
     <Media ex={ex} />
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '10px 0 14px' }}>
       {cardio && <span className="tag acc"><Icon name="figureRun" />{t('Cardio')}</span>}
@@ -575,12 +592,13 @@ export const planToolsSheet = () => ui().openSheet(close => <PlanTools close={cl
 
 function PlanTools({ close }) {
   const st = useStore(s => s.S)
-  const user = useStore(s => s.user)
   const fileRef = useRef(null)
   const hasRoutines = (st.routines || []).some(r => r.ex && r.ex.length)
 
   const exportFile = async () => {
-    const bundle = buildPlanBundle(st, user?.name ? t('{0}’s plan', user.name) : '')
+    // A bundle always says what it is: the routine's name for one routine, and a name for the
+    // whole plan too — an empty `name` in the file is a file nobody can tell apart from another.
+    const bundle = buildPlanBundle(st, t('My plan'))
     const json = JSON.stringify(bundle, null, 2)
     const name = 'opengym-plan-' + todayISO() + '.json'
     if (MOBILE) { try { await shareExport(json, name) } catch (e) { /* dismissed */ } close(); return }
@@ -593,7 +611,7 @@ function PlanTools({ close }) {
     const rd = new FileReader()
     rd.onload = () => {
       try { const bundle = parsePlan(rd.result); close(); planImportSheet(bundle) }
-      catch (e) { toast(t('Import failed: {0}', e.message)) }
+      catch (e) { toast(t('Import failed: {0}', t(e.message))) }
     }
     rd.readAsText(f)
   }
@@ -602,10 +620,10 @@ function PlanTools({ close }) {
     <h3>{t('Share your plan')}</h3>
     <div className="muted small" style={{ marginBottom: 16 }}>{t('Send your routines to a friend, or put your week on paper.')}</div>
     <Button variant="primary" icon="upload" onClick={exportFile} disabled={!hasRoutines}>{t('Export plan file')}</Button>
-    <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A small file a friend imports into their own openGym — routines only, none of your workouts or weigh-ins.')}</div>
+    <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A small file a friend imports into their own Personal Open Gym — routines only, none of your workouts or weigh-ins.')}</div>
     {!MOBILE && <>
       <div style={{ height: 12 }} />
-      <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, user?.name || '') }} disabled={!hasRoutines}>{t('Print / Save as PDF')}</Button>
+      <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, t('My plan')) }} disabled={!hasRoutines}>{t('Print / Save as PDF')}</Button>
       <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A clean one-page-per-plan printout — no exercise ever splits across a page.')}</div>
     </>}
     {!hasRoutines && <div className="dim small" style={{ margin: '12px 2px 0' }}>{t('Add an exercise to a routine first — an empty plan has nothing to share.')}</div>}
@@ -647,6 +665,37 @@ function PlanImport({ bundle, close }) {
     <Button variant="primary" onClick={apply}>{t('Add to my plan')}</Button>
     <div style={{ height: 8 }} />
     <Button variant="ghost" className="dim" onClick={close}>{t('Cancel')}</Button>
+  </>
+}
+
+/* ============================ export one routine ============================ */
+// The whole-plan export lives behind the icon on the Plan screen. This is the same file
+// narrowed to one routine, because "send me your pull day" is the more common ask.
+export const routineExportSheet = routineId => ui().openSheet(close => <RoutineExport routineId={routineId} close={close} />)
+
+function RoutineExport({ routineId, close }) {
+  const st = useStore(s => s.S)
+  const r = (st.routines || []).find(x => x.id === routineId)
+  if (!r) return null
+  const empty = !(r.ex || []).length
+  const exportFile = async () => {
+    const json = JSON.stringify(buildPlanBundle(st, r.name, [routineId]), null, 2)
+    const name = 'opengym-routine-' + safeName(r.name) + '-' + todayISO() + '.json'
+    if (MOBILE) { try { await shareExport(json, name) } catch (e) { /* dismissed */ } close(); return }
+    const blob = new Blob([json], { type: 'application/json' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
+    close(); toast(t('Plan file saved — send it to a friend'))
+  }
+  return <>
+    <h3>{t('Share this routine')}</h3>
+    <div className="muted small" style={{ marginBottom: 16 }}>{t('A small file a friend imports into their own Personal Open Gym — routines only, none of your workouts or weigh-ins.')}</div>
+    <Button variant="primary" icon="upload" onClick={exportFile} disabled={empty}>{t('Export routine file')}</Button>
+    {!MOBILE && <>
+      <div style={{ height: 12 }} />
+      <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, r.name, [routineId]) }} disabled={empty}>{t('Print / Save as PDF')}</Button>
+      <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A clean one-page-per-plan printout — no exercise ever splits across a page.')}</div>
+    </>}
+    {empty && <div className="dim small" style={{ margin: '12px 2px 0' }}>{t('Add an exercise to a routine first — an empty plan has nothing to share.')}</div>}
   </>
 }
 
@@ -696,6 +745,14 @@ export const dayAssignSheet = day => ui().openSheet(close => <DayAssign day={day
 /* ============================ workout detail ============================ */
 function WorkoutDetail({ w, close }) {
   const st = useStore(s => s.S)
+  const exportDay = (ext) => {
+    const b = buildDayExport(st, w.d)
+    if (!b.rows.length) { toast(t('No sets logged that day')); return }
+    const name = dayFilename(w.d, ext)
+    if (MOBILE) { shareExport(ext === 'csv' ? b.csv : JSON.stringify(b, null, 2), name).catch(() => {}); return }
+    downloadFile(ext === 'csv' ? b.csv : JSON.stringify(b, null, 2), name, ext === 'csv' ? 'text/csv' : 'application/json')
+    toast(t('Day exported'))
+  }
   return <>
     <h3>{w.name}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{[fmtDate(w.d, true), ...durPart(w.end - w.start), fmtVol(w.vol, st.unit), ...(w.bw ? [fmtNum(w.bw) + ' ' + st.unit] : [])].join(' · ')}</div>
@@ -703,10 +760,14 @@ function WorkoutDetail({ w, close }) {
       const ex = EXIDX[e.id]
       return <div key={i} className="row" style={{ marginBottom: 12, alignItems: 'flex-start' }}>
         {ex && <Thumb ex={ex} />}
-        <div className="grow"><div className="tt capitalize" style={{ fontWeight: 600 }}>{ex ? ex.n : (e.n || e.id)} {w.prs && w.prs.includes(e.id) && <span className="pr"><Icon name="trophy" />PR</span>}</div>
+        <div className="grow"><div className="tt" style={{ fontWeight: 600 }}>{ex ? exName(ex) : (e.n || e.id)} {w.prs && w.prs.includes(e.id) && <span className="pr"><Icon name="trophy" />PR</span>}</div>
           <div className="ss">{e.sets.filter(s => s.done).map(s => setLabel(e.id, s, e.target)).join('  ·  ') || t('no sets')}</div></div>
       </div>
     })}
+    <div className="row" style={{ gap: 8, marginBottom: 10 }}>
+      <Button size="sm" icon="download" style={{ flex: 1 }} onClick={() => exportDay('csv')}>{t('Day CSV')}</Button>
+      <Button size="sm" icon="download" style={{ flex: 1 }} onClick={() => exportDay('json')}>{t('Day JSON')}</Button>
+    </div>
     <Button variant="danger" onClick={() => confirmSheet({ title: t('Delete workout?'), message: t('This removes it from your history for good.'), confirmText: t('Delete'), danger: true, onConfirm: () => { update(s => { s.workouts = s.workouts.filter(x => x.id !== w.id) }); close(); toast(t('Workout deleted')) } })}>{t('Delete workout')}</Button>
   </>
 }
@@ -824,7 +885,7 @@ function TopWeight({ entryIdx, close }) {
     } else toast(t('Tracked — next time starts at {0}', fmtNum(S().exWeights[entry.id].w) + ' ' + st.unit))
   }
   return <>
-    <h3 className="capitalize row" style={{ gap: 8 }}><Icon name="checkCircle" style={{ color: 'var(--acc)' }} />{t('{0} done', ex.n)}</h3>
+    <h3 className="row" style={{ gap: 8 }}><Icon name="checkCircle" style={{ color: 'var(--acc)' }} />{t('{0} done', exName(ex))}</h3>
     <div className="muted small">{t('Confirm the weight you worked with — your highest becomes the default next time.')}{!unitDone && unit.length > 1 ? ' ' + t('Then finish the superset partner.') : ''}</div>
     <WeightInput value={v} setValue={setV} unit={st.unit} />
     <div style={{ height: 10 }} />
@@ -850,9 +911,10 @@ function WorkoutComplete({ close }) {
 }
 export const workoutCompleteSheet = () => ui().openSheet(close => <WorkoutComplete close={close} />, { kind: 'center' })
 
-// How the session felt, in one tap (F9). Optional forever — the Coach reads it when it is
-// there and never asks twice. Stored on the finished workout itself, so a rating stays tied
-// to the session it describes rather than living in a log nothing else can see.
+// How the session felt, in one tap (F9). Optional forever — it ships in the backup and in the
+// AI export, so it's there when you hand your history to a model. Stored on the finished workout
+// itself, so a rating stays tied to the session it describes rather than living in a log nothing
+// else can see.
 function SessionRating({ w }) {
   const update = useStore(s => s.update)
   const [rating, setRating] = useState(w.rating || null)
@@ -880,9 +942,38 @@ function SessionRating({ w }) {
   </div>
 }
 
+// A freestyle session has no routine behind it, so the exercises you just picked exist only
+// in the history. Asking once, at the end, is the cheapest moment to keep them: the session
+// is still on screen and turning it into a routine takes one tap. Only the config is copied
+// (exercise, set count, targets) — never the sets, which already belong to the workout.
+function SaveAsRoutine({ w }) {
+  const update = useStore(s => s.update)
+  const freestyle = !w.routineId && (w.entries || []).length > 0
+  const [answer, setAnswer] = useState(null)      // null = still asking
+  const [name, setName] = useState('')
+  const save = () => {
+    const r = routineFromSession(w, name.trim() || t('New routine'), DEFAULT_GLYPH)
+    update(s => { s.routines.push(r) })
+    setAnswer('saved')
+    toast(t('Routine saved to your plan'))
+  }
+  if (!freestyle || answer === 'skipped') return null
+  if (answer === 'saved') return <div className="row small accent" style={{ gap: 6, justifyContent: 'center', marginTop: 16 }}>
+    <Icon name="checkCircle" />{t('Saved to your routines')}
+  </div>
+  return <div style={{ textAlign: 'left', marginTop: 16 }}>
+    <h4 className="sec">{t('Save as a routine?')}</h4>
+    <div className="muted small" style={{ marginBottom: 10 }}>{t('Turn this freestyle session into a routine you can repeat.')}</div>
+    <input className="input" style={{ marginBottom: 10 }} value={name} onChange={e => setName(e.target.value)}
+      placeholder={t('New routine')} aria-label={t('Routine name')} />
+    <Button variant="primary" icon="plus" onClick={save}>{t('Save routine')}</Button>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={() => setAnswer('skipped')}>{t('Not now')}</Button>
+  </div>
+}
+
 function FinishSummary({ w, prs, e1prs = [], close }) {
   const st = useStore(s => s.S)
-  const coachOn = !!useStore(s => s.config)?.coach?.enabled && !!st.coach?.consent?.agreedAt
   return <div style={{ textAlign: 'center', padding: '8px 0' }}>
     <div style={{ fontSize: 44, display: 'flex', justifyContent: 'center', color: 'var(--acc)' }}><Icon name="trophy" /></div>
     <h3 style={{ margin: '8px 0' }}>{t('Workout complete!')}</h3>
@@ -898,7 +989,8 @@ function FinishSummary({ w, prs, e1prs = [], close }) {
     </div>}
     <h4 className="sec" style={{ textAlign: 'left' }}>{t('What you just trained')}</h4>
     <BodyMap load={loadOfWorkouts([w])} body={st.body} />
-    {coachOn && <SessionRating w={w} />}
+    <SessionRating w={w} />
+    <SaveAsRoutine w={w} />
     <div style={{ height: 14 }} />
     <Button variant="primary" onClick={() => { close(); nav('/home') }}>{t('Nice!')}</Button>
   </div>
@@ -947,3 +1039,99 @@ function doFinishWorkout() {
   beep(snd(), 880, 0.15); beep(snd(), 1100, 0.15, 0.18); beep(snd(), 1320, 0.3, 0.36)
   ui().openSheet(close => <FinishSummary w={w} prs={prs} e1prs={e1prs} close={close} />, { kind: 'center', locked: true })
 }
+
+/* ============================ selective history export ============================ */
+// Full serie-by-serie history of one exercise + CSV/JSON download.
+// Opened from Stats ("Ver todo / Exportar") and from Settings.
+function ExerciseHistory({ exId, close }) {
+  const st = useStore(s => s.S)
+  const ex = EXIDX[exId]
+  const name = ex ? exName(ex) : ((st.customEx || []).find(x => x.id === exId) || {}).n || exId
+  const rows = exerciseRows(st, exId).slice().reverse()
+  const doExport = (ext) => {
+    const b = buildExerciseExport(st, exId)
+    if (!b.rows.length) { toast(t('No sets logged for this exercise yet')); return }
+    const filename = exerciseFilename(st, exId, ext)
+    const content = ext === 'csv' ? b.csv : JSON.stringify(b, null, 2)
+    if (MOBILE) { shareExport(content, filename).catch(() => {}); return }
+    downloadFile(content, filename, ext === 'csv' ? 'text/csv' : 'application/json')
+    toast(t('Exercise exported'))
+  }
+  return <>
+    <h3 className="capitalize">{name}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('{0} logged sets', rows.length)}</div>
+    <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+      <Button size="sm" icon="download" style={{ flex: 1 }} onClick={() => doExport('csv')}>CSV</Button>
+      <Button size="sm" icon="download" style={{ flex: 1 }} onClick={() => doExport('json')}>JSON</Button>
+    </div>
+    {rows.length ? <div className="list" style={{ maxHeight: '46vh', overflowY: 'auto' }}>
+      {rows.map((r, i) => <div key={i} className="row between small" style={{ padding: '7px 0', borderBottom: '1px solid var(--sep)' }}>
+        <span className="muted">{fmtDate(r.date, true)}{r.pr ? ' 🏆' : ''}</span>
+        <span>set {r.set} · {[r.w !== '' ? fmtNum(r.w) + ' ' + st.unit : null, r.r !== '' ? '×' + r.r : null, r.sec !== '' && r.sec ? fmtSecSafe(r.sec) : null, r.rir !== '' ? `(RIR ${r.rir})` : null, r.rpe !== '' ? `(RPE ${r.rpe})` : null].filter(Boolean).join(' ')}</span>
+      </div>)}
+    </div> : <div className="muted small">{t('Finish your first workout to see history here.')}</div>}
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{t('Close')}</Button>
+  </>
+}
+const fmtSecSafe = (sec) => Math.floor(sec / 60) + ':' + String(Math.round(sec % 60)).padStart(2, '0')
+export const exerciseHistorySheet = (exId) => ui().openSheet(close => <ExerciseHistory exId={exId} close={close} />)
+
+// Picker: choose an exercise that has history, then open its full history/export.
+function ExerciseExportPicker({ close }) {
+  const st = useStore(s => s.S)
+  const [q, setQ] = useState('')
+  const ids = [...new Set((st.workouts || []).flatMap(w => (w.entries || []).map(e => e.id)))]
+    .filter(id => EXIDX[id] || (st.customEx || []).some(c => c.id === id))
+    .sort()
+  const ql = q.toLowerCase().trim()
+  const f = ql ? ids.filter(id => ((EXIDX[id] || {}).n || '').toLowerCase().includes(ql)) : ids
+  return <>
+    <h3>{t('Export by exercise')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Set-by-set history with date, weight, reps, effort and PR flag — as CSV or JSON.')}</div>
+    <div className="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+      <input className="input" placeholder={t('Search…')} value={q} onChange={e => setQ(e.target.value)} /></div>
+    <div className="list" style={{ maxHeight: '44vh', overflowY: 'auto' }}>
+      {f.map(id => <div key={id} className="item" onClick={() => { close(); exerciseHistorySheet(id) }}>
+        <div className="grow"><div className="tt capitalize">{(EXIDX[id] || {}).n || id}</div>
+          <div className="ss">{t('{0} logged sets', exerciseRows(st, id).length)}</div></div>
+        <Icon name="chevronRight" className="chev" />
+      </div>)}
+      {!f.length && <div className="empty">{t('No exercises with history yet.')}</div>}
+    </div>
+  </>
+}
+export const exerciseExportPicker = () => ui().openSheet(close => <ExerciseExportPicker close={close} />)
+
+// Picker: choose a trained day, then download it as CSV/JSON.
+function DayExportPicker({ close }) {
+  const st = useStore(s => s.S)
+  const days = [...new Set((st.workouts || []).map(w => w.d))].sort().reverse()
+  const doExport = (iso, ext) => {
+    const b = buildDayExport(st, iso)
+    if (!b.rows.length) return
+    const filename = dayFilename(iso, ext)
+    const content = ext === 'csv' ? b.csv : JSON.stringify(b, null, 2)
+    if (MOBILE) { shareExport(content, filename).catch(() => {}); return }
+    downloadFile(content, filename, ext === 'csv' ? 'text/csv' : 'application/json')
+    toast(t('Day exported'))
+  }
+  return <>
+    <h3>{t('Export by day')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Every set of every workout that day — exercise, weight, reps, effort — as CSV or JSON.')}</div>
+    <div className="list" style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+      {days.map(d => {
+        const n = dayRows(st, d).length
+        return <div key={d} className="item">
+          <div className="grow"><div className="tt">{fmtDate(d, true)}</div><div className="ss">{t('{0} logged sets', n)}</div></div>
+          <button className="chip" onClick={() => doExport(d, 'csv')}>CSV</button>
+          <button className="chip" onClick={() => doExport(d, 'json')}>JSON</button>
+        </div>
+      })}
+      {!days.length && <div className="empty">{t('No workouts yet.')}</div>}
+    </div>
+    <div style={{ height: 8 }} />
+    <Button variant="ghost" className="dim" onClick={close}>{t('Close')}</Button>
+  </>
+}
+export const dayExportPicker = () => ui().openSheet(close => <DayExportPicker close={close} />)

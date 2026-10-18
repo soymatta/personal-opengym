@@ -1,4 +1,5 @@
-# Publishes the browser-only demo to GitHub Pages: https://duartesantos8.github.io/openGym/
+# Publishes the browser-only demo to GitHub Pages: https://soymatta.github.io/personal-opengym/
+# (Enable Pages → Source: GitHub Actions once; until then this job builds but never deploys.)
 #
 # Pages serves static files only, so this build has no backend — VITE_DEMO=1 makes the app
 # boot straight into guest mode with a seeded example history (see frontend/src/lib/demo.js).

@@ -34,8 +34,9 @@ body:
     attributes:
       label: How are you running openGym?
       options:
-        - Self-hosted (docker compose)
+        - Deployed static build (Vercel / Pages / static host)
         - Frontend dev server (npm run dev)
+        - Installed as a home-screen app (PWA)
         - Other / not sure
     validations:
       required: true
@@ -49,12 +50,12 @@ body:
       required: true
 
   - type: checkboxes
-    id: passkey
+    id: data
     attributes:
-      label: Is this about login / passkeys?
+      label: Data-related
       description: >
-        Most login issues are an `RP_ID`/`ORIGIN` mismatch — check your `.env` against the
-        domain you're accessing openGym from before reporting. See the
-        [self-hosting guide](../../docs/SELF_HOSTING.md).
+        openGym keeps everything in this browser's localStorage — there is no server and no
+        login. If data went missing, say whether you had an export/backup and whether the
+        optional Supabase sync was configured.
       options:
-        - label: Yes, this is a login/passkey issue and I've already checked RP_ID/ORIGIN
+        - label: This is about data not being where I expected it

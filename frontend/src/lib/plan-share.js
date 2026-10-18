@@ -8,7 +8,7 @@
 //  2. A clean, printable page (Save as PDF) where a single exercise never splits across
 //     a page break — each exercise, and each routine that fits, stays in one place.
 
-import { EXIDX } from './exercises.js'
+import { EXIDX, exName } from './exercises.js'
 import { modeOf, fmtSec } from './history.js'
 import { uid, todayISO, DAYN, fmtNum, exCount } from './format.js'
 import { t } from './i18n.js'
@@ -17,7 +17,9 @@ const PLAN_FMT = 1
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]   // Mon-first, matching the Plan screen
 
 // Keep only the meaningful config fields, so the file stays small and readable.
-function cleanEx(e) {
+// Exported because a routine built from a finished session (below) has to be cleaned the
+// same way — the two must not drift into producing different routine shapes.
+export function cleanEx(e) {
   const o = { id: e.id, sets: e.sets }
   const mode = modeOf(e)
   if (mode === 'cardio') {
@@ -42,19 +44,52 @@ function cleanEx(e) {
   return o
 }
 
-/** Build the shareable bundle: every routine, the week schedule, referenced customs. */
-export function buildPlanBundle(S, name) {
-  const routines = (S.routines || []).map(r => ({
+/**
+ * Build the shareable bundle: routines, the week schedule, referenced customs.
+ * Pass `only` (an array of routine ids) to export a single routine: the week is then left
+ * empty on purpose — the recipient imports the routine as a new one with a fresh id, so a
+ * schedule pointing at the old id could never resolve on their side, and offering to replace
+ * their whole week with one day is worse than offering nothing.
+ */
+export function buildPlanBundle(S, name, only) {
+  const keep = only ? new Set(only) : null
+  const source = (S.routines || []).filter(r => !keep || keep.has(r.id))
+  const routines = source.map(r => ({
     id: r.id, name: r.name, emoji: r.emoji, ...(r.prog ? { prog: r.prog } : {}), ex: (r.ex || []).map(cleanEx)
   }))
   const usedIds = new Set(routines.flatMap(r => r.ex.map(e => e.id)))
   const customEx = (S.customEx || [])
     .filter(c => usedIds.has(c.id))
     .map(c => ({ id: c.id, n: c.n, bp: c.bp, ...(c.desc ? { desc: c.desc } : {}) }))
+  // A day survives only if its routine is in the bundle: a week can point at a routine that
+  // has since been deleted, and that dangling day would be counted as scheduled on import and
+  // then resolve to nothing.
   const week = {}
-  WEEK_ORDER.forEach(d => { if (S.week?.[d]) week[d] = S.week[d] })
+  if (!keep) {
+    const included = new Set(routines.map(r => r.id))
+    WEEK_ORDER.forEach(d => {
+      const id = S.week?.[d]
+      if (id && included.has(id)) week[d] = id
+    })
+  }
   return { opengym_plan: PLAN_FMT, exported: todayISO(), name: name || '', week, routines, customEx }
 }
+
+/**
+ * A routine built from a finished session — the config you trained, not the sets you logged.
+ *
+ * A freestyle workout knows its exercise ids, its set count and the targets it prescribed
+ * (entry.target), but not a routine. Turning the session into a routine is what lets
+ * "same again next week" be one tap instead of a re-typed list. The set count comes from
+ * the session rather than the original target so added sets are part of what gets saved.
+ */
+export function routineFromSession(A, name, emoji) {
+  const ex = (A.entries || [])
+    .filter(e => (e.sets || []).length)
+    .map(e => cleanEx({ ...(e.target || {}), id: e.id, sets: e.sets.length, sg: e.sg || e.target?.sg }))
+  return { id: uid(), name, emoji, ex }
+}
+
 
 /**
  * Validate + normalise an imported file. Throws with a friendly message if it isn't one.
@@ -68,7 +103,7 @@ export function buildPlanBundle(S, name) {
 export function parsePlan(raw) {
   const data = typeof raw === 'string' ? JSON.parse(raw) : raw
   if (!data || !data.opengym_plan || !Array.isArray(data.routines)) {
-    throw new Error(t('this isn’t an openGym plan file'))
+    throw new Error(t('this isn’t a Personal Open Gym plan file'))
   }
   const customEx = (Array.isArray(data.customEx) ? data.customEx : []).filter(c => c && c.id)
   const known = new Set(customEx.map(c => c.id))
@@ -164,7 +199,7 @@ function routineHTML(r, unit) {
   const rows = units(r.ex).map(u => {
     const items = u.map(e => {
       const ex = EXIDX[e.id]
-      const name = ex ? ex.n : t('Unknown exercise')
+      const name = ex ? exName(ex) : t('Unknown exercise')
       const part = ex && ex.bp && ex.bp !== 'cardio' ? `<span class="part">${esc(ex.bp)}</span>` : ''
       return `<div class="ex"><div class="ex-n">${esc(name)}${part}</div><div class="ex-s">${esc(scheme(e, unit))}</div></div>`
     }).join('')
@@ -188,16 +223,24 @@ function weekHTML(S) {
   return `<div class="week">${rows}</div>`
 }
 
-/** Full self-contained HTML for the print/PDF view. */
-export function planPrintHTML(S, owner) {
+/** Full self-contained HTML for the print/PDF view. `owner` titles the document — pass the
+ *  routine's name and the page is about that routine. `only` narrows it to one routine and drops
+ *  the week block and the "Routines" label: a single routine's schedule on its own page says
+ *  nothing, and the label would only repeat the title. */
+export function planPrintHTML(S, owner, only) {
   const unit = S.unit || 'kg'
-  const routines = (S.routines || []).filter(r => r.ex && r.ex.length)
+  const keep = only ? new Set(only) : null
+  const routines = (S.routines || []).filter(r => r.ex && r.ex.length && (!keep || keep.has(r.id)))
   const body = routines.length
     ? routines.map(r => routineHTML(r, unit)).join('')
     : `<p class="none">${esc(t('No routines yet.'))}</p>`
-  const sub = [owner, todayISO()].filter(Boolean).map(esc).join(' · ')
+  // The name of what is being printed is the document's title, not a date in the corner: a
+  // routine printed on its own is *about* that routine, and "Weekly Training Plan" over a single
+  // routine says nothing. The date moves to the subtitle, where it belongs.
+  const title = owner || t('Weekly Training Plan')
+  const sub = esc(todayISO())
   return `<!doctype html><html><head><meta charset="utf-8">
-<title>${esc(t('Weekly Training Plan'))}</title>
+<title>${esc(title)}</title>
 <style>
   @page { margin: 16mm 15mm; }
   * { box-sizing: border-box; }
@@ -243,15 +286,15 @@ export function planPrintHTML(S, owner) {
 </style></head>
 <body><div class="doc">
   <header>
-    <div class="kicker">openGym</div>
-    <h1>${esc(t('Weekly Training Plan'))}</h1>
+    <div class="kicker">Personal Open Gym</div>
+    <h1>${esc(title)}</h1>
     ${sub ? `<div class="sub">${sub}</div>` : ''}
   </header>
-  <h3 class="block">${esc(t('Week schedule'))}</h3>
-  ${weekHTML(S)}
-  <h3 class="block">${esc(t('Routines'))}</h3>
+  ${keep ? '' : `<h3 class="block">${esc(t('Week schedule'))}</h3>
+  ${weekHTML(S)}`}
+  ${keep ? '' : `<h3 class="block">${esc(t('Routines'))}</h3>`}
   ${body}
-  <footer>${esc(t('Made with openGym'))} · opengym.duarte-santos.ch</footer>
+  <footer>${esc(t('Made with Personal Open Gym'))} · opengym.duarte-santos.ch</footer>
 </div></body></html>`
 }
 
@@ -259,7 +302,7 @@ export function planPrintHTML(S, owner) {
  * Render the plan and open the browser's print dialog (→ Save as PDF).
  * Uses a hidden iframe so we never navigate away or trip a popup blocker.
  */
-export function printPlan(S, owner) {
+export function printPlan(S, owner, only) {
   const ifr = document.createElement('iframe')
   ifr.setAttribute('aria-hidden', 'true')
   ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;'
@@ -274,7 +317,7 @@ export function printPlan(S, owner) {
     try { w.print() } catch (e) { cleanup() }
   }
   const doc = ifr.contentWindow.document
-  doc.open(); doc.write(planPrintHTML(S, owner)); doc.close()
+  doc.open(); doc.write(planPrintHTML(S, owner, only)); doc.close()
   // Give the iframe a tick to lay out before printing.
   if (doc.readyState === 'complete') setTimeout(run, 120)
   else ifr.onload = () => setTimeout(run, 120)

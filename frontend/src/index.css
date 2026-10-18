@@ -174,6 +174,12 @@ body.resting #app{padding-bottom:calc(250px + var(--sab))}
 /* large title, the way a nav bar does it */
 .hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:8px 0 18px}
 .hdr h1{font-size:34px;line-height:1.06;font-weight:700;letter-spacing:-.028em}
+/* Home's title is the app's name, not a section — the one header that carries the brand. It keeps
+   the house size wherever there is room and gives up size instead of wrapping on a narrow phone:
+   a name broken over two lines stops reading as a name. The qualifier is quieter than the name,
+   which is how the rest of the app already marks secondary words. */
+.hdr h1.brand{display:flex;align-items:baseline;gap:.28em;white-space:nowrap;font-size:clamp(24px,8.2vw,34px);letter-spacing:-.03em}
+.hdr h1.brand .qual{color:var(--label-2);font-weight:600}
 .hdr .sub{color:var(--label-2);font-size:15px;letter-spacing:-.006em;margin-top:4px}
 
 .iconbtn{
@@ -417,12 +423,16 @@ h4.sec{
 .sw .knob{
   width:27px;height:27px;border-radius:50%;background:#fff;
   box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
-  transition:transform var(--med) var(--ease),width var(--fast) var(--ease);
+  /* The squish on press used to be a width change: two animatable geometry properties on the
+     same element meant a layout every frame. translate/scale are their own properties, so the
+     press squish and the on/off travel animate independently, on the compositor. */
+  transform-origin:left center;
+  transition:translate var(--med) var(--ease),scale var(--fast) var(--ease);
 }
 .sw.on{background:var(--acc)}
-.sw.on .knob{transform:translateX(20px)}
-.sw:active .knob{width:31px}
-.sw.on:active .knob{transform:translateX(16px)}
+.sw.on .knob{translate:20px}
+.sw:active .knob{scale:1.15 1}
+.sw.on:active .knob{translate:16px}
 .sw:disabled{opacity:.4}
 
 /* --- segmented control --- */
@@ -525,7 +535,9 @@ h4.sec{
 
 /* ------------------------------------------------------------- workout --- */
 .wprog{height:4px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-bottom:16px}
-.wprog i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width var(--med) var(--ease)}
+/* Both progress fills grow/shrink through transform, not width: the bars refresh every second
+   during a rest, and a width transition costs a layout on every frame of that glide. */
+.wprog i{display:block;height:100%;width:100%;background:var(--acc);border-radius:99px;transform-origin:left center;transition:transform var(--med) var(--ease)}
 .exmedia{position:relative;border-radius:var(--r-lg);overflow:hidden;background:#fff;margin-bottom:12px}
 .exmedia img{width:100%;height:320px;object-fit:contain;display:block}
 .exmedia .gifhint,.exmedia .giftoggle{
@@ -616,7 +628,7 @@ h4.sec{
 @keyframes slideup{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
 #timer .t{font-size:26px;font-weight:600;letter-spacing:-.026em;font-variant-numeric:tabular-nums;min-width:66px}
 #timer .bar{flex:1;height:4px;background:var(--surface-3);border-radius:99px;overflow:hidden}
-#timer .bar i{display:block;height:100%;background:var(--acc);transition:width 1s linear}
+#timer .bar i{display:block;height:100%;width:100%;background:var(--acc);transform-origin:left center;transition:transform 1s linear}
 /* rest variant: −15/+15/Skip and the clock won't share one line on a phone, so the clock and
    bar take the top row and the controls take their own. The work timer keeps a single row —
    it only ever has two buttons. */

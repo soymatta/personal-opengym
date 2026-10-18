@@ -18,7 +18,9 @@ export function fmtDate(iso, long) {
 }
 export function fmtDur(ms) {
   const m = Math.floor(ms / 60000)
-  return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + ' min'
+  // The unit is part of the string, so it is translated like any other: "1h 30m" was English in
+  // every language, and a month total over an hour is the common case here, not the rare one.
+  return m >= 60 ? t('{0}h {1}m', Math.floor(m / 60), m % 60) : t('{0} min', m)
 }
 // Imported history has no clock — an unknown duration is left out rather than shown as "0 min".
 export const durPart = ms => (ms >= 60000 ? [fmtDur(ms)] : [])

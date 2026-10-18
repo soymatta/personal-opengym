@@ -14,6 +14,7 @@ import { EXIDX } from './exercises.js'
 import { modeOf } from './history.js'
 import { DAYN, todayISO } from './format.js'
 import { t } from './i18n.js'
+import { SITES, lenUnit, toLen } from './measures.js'
 
 export const AI_FORMAT = 'opengym.ai-export'
 export const AI_VERSION = 1
@@ -118,6 +119,18 @@ export function buildAiExport(S) {
 
   const bodyweight = (S.bodyweight || []).map(b => ({ date: b.d, weight: b.w, unit }))
 
+  // Tape measurements: centimetres on disk (see lib/measures.js), so the export states the
+  // length unit it converted to and never leaves a bare number for an AI to guess at.
+  const lenU = lenUnit(unit)
+  const measures = (S.measures || []).map(m => ({
+    date: m.d, unit: lenU,
+    ...Object.fromEntries(SITES.filter(s => Number(m.v[s]) > 0).map(s => [s, toLen(m.v[s], lenU)])),
+  }))
+  // Per-exercise notes, joined to the exercise the same way sets are: an id plus a readable name.
+  const notes = Object.entries(S.notes || {})
+    .filter(([, v]) => String(v || '').trim())
+    .map(([id, v]) => ({ exerciseId: id, exercise: exName(S, id), note: String(v).trim() }))
+
   return {
     format: AI_FORMAT,
     version: AI_VERSION,
@@ -132,6 +145,8 @@ export function buildAiExport(S) {
       'workouts[].prs': 'exercise ids that set a personal record that session; `pr` on a set marks a set of one of those exercises',
       'byExercise[]': 'per-exercise chronological sets per day',
       'bodyweight[]': 'date + weight',
+      'measures[]': 'date + tape sites in cm or in (the `unit` on the record)',
+      'notes[]': 'exerciseId + the note the lifter keeps about that exercise',
     },
     profile: {
       unit,
@@ -149,11 +164,15 @@ export function buildAiExport(S) {
     sets,
     byExercise: [...byId.values()],
     bodyweight,
+    measures,
+    notes,
     counts: {
       routines: routines.length,
       workouts: workouts.length,
       sets: sets.length,
       bodyweight: bodyweight.length,
+      measures: measures.length,
+      notes: notes.length,
     },
     // Round-trip payload: the exact app state, so importing this file restores everything.
     state: clone(S),

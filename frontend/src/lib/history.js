@@ -1,6 +1,7 @@
 // Pure helpers over the state object S (ported 1:1 from the vanilla app).
 import { todayISO, isoOf, weekKey, fmtNum } from './format.js'
 import { isCardio } from './exercises.js'
+import { WAVES } from './percent.js'
 
 // How an exercise is logged (issue #16). This used to be derived from the body part alone,
 // which meant a plank or a farmer's carry could only be timed by filing it under cardio.
@@ -86,8 +87,11 @@ export function defaultConfig(id, mode) {
 export function exLine(cfg, unit) {
   const mode = modeOf(cfg)
   const n = cfg.sets || 1
-  const load = cfg.weight ? ' · ' + fmtNum(cfg.weight) + ' ' + unit : ''
+  // A percentage prescription has no weight to print: the load depends on a training max that
+  // is derived at the moment the session is built, so the summary states the share instead.
+  if (WAVES[cfg.wave]) return `${WAVES[cfg.wave].sets.length} × ${WAVES[cfg.wave].reps.join('/')} · ${WAVES[cfg.wave].sets.join('/')} %`
   if (mode === 'cardio') return `${n} × ${cfg.min || 20} min @ ${fmtNum(cfg.speed || 8)} km/h`
+  const load = cfg.weight ? ' · ' + fmtNum(cfg.weight) + ' ' + unit : ''
   if (mode === 'time') return `${n} × ${fmtSec(cfg.sec || 45)}${load}`
   return `${n} × ${cfg.reps}${load}`
 }

@@ -11,7 +11,7 @@ import { planOf, applyPlan } from './lib/plans.js'
 import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
-import { Button, Slider, Switch, Segmented, SelectRow, TextArea } from './components/ui.jsx'
+import { Button, Slider, Switch, Segmented, SelectRow, TextArea, NumberField } from './components/ui.jsx'
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import { loadOfWorkouts } from './lib/muscles.js'
@@ -20,7 +20,9 @@ import { buildPlanBundle, parsePlan, mergePlan, printPlan, routineFromSession } 
 import { exerciseRows, dayRows, buildExerciseExport, buildDayExport, downloadFile, exerciseFilename, dayFilename, safeName } from './lib/history-export.js'
 import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC } from './lib/progression.js'
-import { MOBILE, shareExport } from './lib/mobile.js'
+import { pctSets, usesPct, WAVES, waveReps, trainingMax } from './lib/percent.js'
+import { loadFor, barOf, BARS } from './lib/plates.js'
+import { SITES, siteKey, lenUnit, toLen, toCm, setMeasure } from './lib/measures.js'
 
 const S = () => useStore.getState().S
 const update = (...a) => useStore.getState().update(...a)
@@ -144,6 +146,63 @@ export function bwSheet(opts = {}) {
   const h = ui().openSheet(close => <BwSheet {...opts} close={close} />, { locked: !!opts.required })
   return h
 }
+
+/* ============================ plate calculator ============================ */
+// What to hang on the bar. Comes up mid-workout, so it is one screen with no scrolling: the
+// target, the bar you have, and the plates in the order you pick them up. A weight the plate
+// set cannot make says so and offers the nearest one it can, instead of silently rounding.
+function PlateSheet({ weight, close }) {
+  const st = useStore(s => s.S)
+  const unit = st.unit
+  const [bar, setBar] = useState(barOf(unit))
+  const [target, setTarget] = useState(weight > 0 ? weight : barOf(unit) * 3)
+  const load = loadFor(target, { unit, bar })
+  const bars = BARS[unit] || []
+  return <>
+    <h3>{t('Plate calculator')}</h3>
+    <div className="muted small" style={{ marginBottom: 14 }}>{t('What you need on each side of the bar.')}</div>
+    <div className="row between" style={{ marginBottom: 10 }}>
+      <span className="small muted">{t('Total weight')}</span>
+      <span className="row" style={{ gap: 8 }}>
+        <b style={{ fontSize: 19 }}>{fmtNum(target)} {unit}</b>
+        <Stepper value={target} onChange={setTarget} step={2.5} unit={unit} />
+      </span>
+    </div>
+    <div className="row between" style={{ marginBottom: 14 }}>
+      <span className="small muted">{t('Bar')}</span>
+      <div className="row" style={{ gap: 6 }}>
+        {bars.map(b => <button key={b} className={'chip' + (b === bar ? ' on' : '')} onClick={() => setBar(b)}>{fmtNum(b)} {unit}</button>)}
+      </div>
+    </div>
+    {load.below
+      ? <div className="progline warn"><Icon name="info" /><span>{t('Lighter than the bar — nothing to load.')}</span></div>
+      : load.perSide.length === 0
+        ? <div className="progline"><Icon name="plate" /><span>{t('Empty bar — no plates needed.')}</span></div>
+        : <>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            {load.perSide.map(x => <span key={x.p} className="tag nocap" style={{ fontSize: 14, padding: '6px 10px' }}>
+              {fmtNum(x.p)} {unit}{x.n > 1 && <b style={{ marginLeft: 5 }}>×{x.n}</b>}
+            </span>)}
+          </div>
+          <div className="row between"><span className="small muted">{t('Per side')}</span><b>{fmtNum((load.loaded - bar) / 2)} {unit}</b></div>
+        </>}
+    <div className="row between" style={{ marginTop: 8, borderTop: '1px solid var(--sep)', paddingTop: 10 }}>
+      <span className="small muted">{t('On the bar')}</span><b style={{ fontSize: 17 }}>{fmtNum(load.loaded)} {unit}</b>
+    </div>
+    {!load.below && load.perSide.length > 0 && <div className="row" style={{ gap: 5, marginTop: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+      <span className="barvis" aria-hidden="true" />
+      {load.perSide.flatMap(x => Array.from({ length: x.n }, (_, i) => <span key={x.p + '-' + i} className="platevis" aria-hidden="true"
+        style={{ height: Math.round(10 + Math.min(46, x.p * 1.7)), width: Math.round(6 + Math.min(6, x.p * 0.13)) }} />))}
+    </div>}
+    {load.remainder > 0 && <div className="progline warn" style={{ marginTop: 12 }}>
+      <Icon name="info" />
+      <span>{t('{0} {1} short of {2} — the bar holds {3} {4}.', fmtNum(load.remainder), unit, fmtNum(target), fmtNum(load.loaded), unit)}</span>
+    </div>}
+    <div style={{ height: 14 }} />
+    <Button variant="primary" onClick={close}>{t('Done')}</Button>
+  </>
+}
+export const plateSheet = weight => ui().openSheet(close => <PlateSheet weight={weight} close={close} />)
 
 /* ============================ import from another app ============================ */
 // Shows what a parsed export would actually do before anything is written. An import is
@@ -295,6 +354,87 @@ function OneRM({ ex }) {
   </>
 }
 
+/* ============================ body measurements ============================ */
+// One tape, one date: all six sites on one screen, because measuring is a five-minute ritual
+// and a form that opens six times is a form you stop filling in. Blank stays blank — leaving a
+// site empty means "not measured today", never "delete what I logged in March".
+function MeasuresSheet({ close }) {
+  const st = useStore(s => s.S)
+  const u = lenUnit(st.unit)
+  const iso = todayISO()
+  const [v, setV] = useState(() => {
+    const today = (st.measures || []).find(m => m.d === iso)
+    const out = {}
+    SITES.forEach(s => { out[s] = today && today.v[s] > 0 ? toLen(today.v[s], u) : null })
+    return out
+  })
+  const filled = SITES.filter(s => Number(v[s]) > 0).length
+  const save = () => {
+    update(s => {
+      let next = s.measures || []
+      SITES.forEach(site => { const raw = Number(v[site]); if (raw > 0) next = setMeasure(next, iso, site, toCm(raw, u)) })
+      s.measures = next
+    })
+    close()
+    toast(t('Measurements saved'))
+  }
+  const recent = [...(st.measures || [])].reverse().slice(0, 4)
+  const delDay = d => update(s => { s.measures = (s.measures || []).filter(m => m.d !== d) })
+  return <>
+    <h3>{t('Body measurements')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Today') + ', ' + fmtDate(iso, true)} · {u}</div>
+    <div className="list" style={{ gap: 0 }}>
+      {SITES.map(site => <div key={site} className="row between" style={{ padding: '7px 0', borderBottom: '1px solid var(--sep)' }}>
+        <span className="small">{t(siteKey(site))}</span>
+        <NumberField nullable className="msr-in" value={v[site]} onChange={n => setV({ ...v, [site]: n })}
+          aria-label={t(siteKey(site))} placeholder="—" />
+      </div>)}
+    </div>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" disabled={!filled} onClick={save}>{t('Save')}</Button>
+    {recent.length > 0 && <>
+      <h4 className="sec">{t('Recent measurements')}</h4>
+      <div className="list" style={{ gap: 0 }}>
+        {recent.map(m => <div key={m.d} className="row between" style={{ padding: '9px 2px', borderBottom: '1px solid var(--sep)' }}>
+          <span className="small muted">{fmtDate(m.d, true)}</span>
+          <span className="row" style={{ gap: 12 }}>
+            <span className="small">{SITES.filter(s => m.v[s] > 0).map(s => `${t(s)} ${fmtNum(toLen(m.v[s], u))}`).join(' · ')}</span>
+            <button className="iconbtn" style={{ width: 32, height: 30, borderRadius: 8, fontSize: 15, color: 'var(--red)' }} onClick={() => delDay(m.d)} aria-label={t('Delete')}><Icon name="trash" /></button>
+          </span>
+        </div>)}
+      </div>
+    </>}
+  </>
+}
+export const measuresSheet = () => ui().openSheet(close => <MeasuresSheet close={close} />)
+
+/* ============================ per-exercise note ============================ */
+// One note per exercise, editable wherever the exercise is on screen. It is saved on blur and
+// again when the sheet closes, so typing does not clone the whole training state per keystroke
+// and a half-written note is never lost by closing the sheet with the keyboard still open.
+function NoteBox({ exId }) {
+  const st = useStore(s => s.S)
+  const [v, setV] = useState((st.notes || {})[exId] || '')
+  const latest = useRef(v)
+  latest.current = v
+  const save = () => {
+    const txt = latest.current.trim()
+    const cur = (S().notes || {})[exId] || ''
+    if (txt === cur) return
+    update(s => {
+      s.notes = s.notes || {}
+      if (txt) s.notes[exId] = txt
+      else delete s.notes[exId]
+    })
+  }
+  useEffect(() => () => save(), [])
+  return <>
+    <h4 className="sec">{t('Notes')}</h4>
+    <TextArea rows={2} maxLength={300} value={v} onChange={e => setV(e.target.value)} onBlur={save}
+      placeholder={t('Anything worth remembering next time — a cue, a seat height, how it felt.')} />
+  </>
+}
+
 function ExerciseDetail({ ex, close }) {
   const st = useStore(s => s.S)
   const last = lastEntryFor(st, ex.id)
@@ -316,6 +456,7 @@ function ExerciseDetail({ ex, close }) {
       <Button variant="danger" icon="trash" style={{ flex: 1 }} onClick={() => deleteCustomEx(ex, close)}>{t('Delete')}</Button>
     </div>}
     {!isCardio(ex) && <OneRM ex={ex} />}
+    <NoteBox exId={ex.id} />
     {instrFor(ex).length > 0 &&<><h4 className="sec">{t('How to')}{!INSTR_LANGS.includes(getLang()) && <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}> · {t('instructions in English')}</span>}</h4><ol className="steps-list">{instrFor(ex).map((s, i) => <li key={i}>{s}</li>)}</ol></>}
   </>
 }
@@ -499,6 +640,15 @@ function ProgressionFields({ ex, mode, c, setC, routine, unit }) {
   </>
 }
 
+// Where the training max came from, in one sentence. The whole wave rides on this number, so
+// the screen that turns it on says whether it was derived or hand-set — and what from.
+function tmNote(S, cfg) {
+  const { tm, source, from } = trainingMax(S, cfg, defaultIncrement(cfg.id, S.unit))
+  if (tm > 0 && source === 'set') return t('Training max: {0} {1} — set by hand.', fmtNum(tm), S.unit)
+  if (tm > 0) return t('Training max: {0} {1} — 90 % of your best estimated 1RM ({2} {3}).', fmtNum(tm), S.unit, fmtNum(from), S.unit)
+  return t('No estimated 1RM yet — log a working set of this exercise and the percentages fill in.')
+}
+
 function ExConfig({ ex, existing, onSave, onDelete, close, routine }) {
   const st = useStore(s => s.S)
   const cardio = isCardio(ex.id)
@@ -521,7 +671,17 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine }) {
     else {
       const reps = Math.max(1, Math.round(c.reps) || 10)
       const out = { sets, mode: 'reps', reps, weight: Math.max(0, c.weight || 0), ...prog }
-      if (policyFor({ ...c, id: ex.id }, routine, 'reps') === 'double') out.repsMin = Math.min(reps, Math.max(1, Math.round(c.repsMin) || Math.max(1, reps - 2)))
+      if (c.wave && WAVES[c.wave]) {
+        // The wave prescribes both the set count and the reps per set, so those fields are not
+        // saved from the form: a "5×5" that the wave turns into 5/5/5 at 65/75/85 % would be a
+        // number on screen that no longer describes the session. Only the training max carries.
+        out.wave = c.wave
+        out.sets = WAVES[c.wave].sets.length
+        out.reps = WAVES[c.wave].reps[0]
+        if (c.tm > 0) out.tm = c.tm
+      } else if (policyFor({ ...c, id: ex.id }, routine, 'reps') === 'double') {
+        out.repsMin = Math.min(reps, Math.max(1, Math.round(c.repsMin) || Math.max(1, reps - 2)))
+      }
       onSave(out)
     }
   }
@@ -547,14 +707,36 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine }) {
         <Stepper label={t('Seconds')} value={c.sec} step={5} decimal={false} onChange={v => setC(x => ({ ...x, sec: v }))} />
         <Stepper label={t('Weight ({0})', st.unit)} value={c.weight} step={2.5} onChange={v => setC(x => ({ ...x, weight: v }))} />
       </> : <>
-        <Stepper label={t('Sets')} value={c.sets} step={1} decimal={false} onChange={v => setC(x => ({ ...x, sets: v }))} />
-        <Stepper label={t('Reps')} value={c.reps} step={1} decimal={false} onChange={v => setC(x => ({ ...x, reps: v }))} />
-        <Stepper label={t('Weight ({0})', st.unit)} value={c.weight} step={2.5} onChange={v => setC(x => ({ ...x, weight: v }))} />
+        {/* A wave dictates the sets and the reps, so those steppers give way to the numbers the
+            wave actually prescribes — an editable "5 × 5" next to a 5/3/1 wave is a field that
+            lies about the session it will build. */}
+        {c.wave && WAVES[c.wave] ? <>
+          <div className="cfgrow-note">
+            <b>{WAVES[c.wave].sets.length} × {waveReps(c.wave)}</b>
+            <span className="dim"> · {WAVES[c.wave].sets.join(' / ')} %</span>
+          </div>
+          <Stepper label={t('Training max ({0})', st.unit)} value={c.tm || 0} step={2.5} onChange={v => setC(x => ({ ...x, tm: v }))} />
+        </> : <>
+          <Stepper label={t('Sets')} value={c.sets} step={1} decimal={false} onChange={v => setC(x => ({ ...x, sets: v }))} />
+          <Stepper label={t('Reps')} value={c.reps} step={1} decimal={false} onChange={v => setC(x => ({ ...x, reps: v }))} />
+          <Stepper label={t('Weight ({0})', st.unit)} value={c.weight} step={2.5} onChange={v => setC(x => ({ ...x, weight: v }))} />
+        </>}
       </>}
     </div>
     {mode === 'time' && <div className="small dim" style={{ marginBottom: 18 }}>
       {t('A timer runs while you hold the set. Leave the weight at 0 for bodyweight holds.')}
     </div>}
+    {mode === 'reps' && <>
+      <h4 className="sec">{t('Percentage of your training max')}</h4>
+      <Segmented className="seg-range" value={c.wave || 'off'}
+        onChange={w => setC(x => ({ ...x, wave: w === 'off' ? undefined : w }))}
+        options={[{ value: 'off', label: t('Off') }, ...Object.keys(WAVES).map(k => ({ value: k, label: k === 'deload' ? t('Deload') : WAVES[k].sets.join('/') }))]} />
+      <div className="small dim" style={{ margin: '8px 0 18px' }}>
+        {c.wave
+          ? t('The wave sets the weight and the reps.') + ' ' + tmNote(st, { ...c, id: ex.id })
+          : t('Prescribe the weight as a share of your training max — 90 % of your best estimated 1RM — instead of a fixed number.')}
+      </div>
+    </>}
     <ProgressionFields ex={ex} mode={mode} c={c} setC={setC} routine={routine} unit={st.unit} />
     <Button variant="primary" onClick={save}>{existing ? t('Save') : t('Add to routine')}</Button>
     {ex.custom && <><div style={{ height: 8 }} /><Button icon="pencil" onClick={() => { close(); customExSheet(ex) }}>{t('Edit or delete this exercise')}</Button></>}
@@ -601,7 +783,6 @@ function PlanTools({ close }) {
     const bundle = buildPlanBundle(st, t('My plan'))
     const json = JSON.stringify(bundle, null, 2)
     const name = 'opengym-plan-' + todayISO() + '.json'
-    if (MOBILE) { try { await shareExport(json, name) } catch (e) { /* dismissed */ } close(); return }
     const blob = new Blob([json], { type: 'application/json' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
     close(); toast(t('Plan file saved — send it to a friend'))
@@ -621,11 +802,9 @@ function PlanTools({ close }) {
     <div className="muted small" style={{ marginBottom: 16 }}>{t('Send your routines to a friend, or put your week on paper.')}</div>
     <Button variant="primary" icon="upload" onClick={exportFile} disabled={!hasRoutines}>{t('Export plan file')}</Button>
     <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A small file a friend imports into their own Personal Open Gym — routines only, none of your workouts or weigh-ins.')}</div>
-    {!MOBILE && <>
-      <div style={{ height: 12 }} />
-      <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, t('My plan')) }} disabled={!hasRoutines}>{t('Print / Save as PDF')}</Button>
-      <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A clean one-page-per-plan printout — no exercise ever splits across a page.')}</div>
-    </>}
+    <div style={{ height: 12 }} />
+    <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, t('My plan')) }} disabled={!hasRoutines}>{t('Print / Save as PDF')}</Button>
+    <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A clean one-page-per-plan printout — no exercise ever splits across a page.')}</div>
     {!hasRoutines && <div className="dim small" style={{ margin: '12px 2px 0' }}>{t('Add an exercise to a routine first — an empty plan has nothing to share.')}</div>}
     <h4 className="sec">{t('Got a plan from a friend?')}</h4>
     <Button variant="ghost" icon="folder" onClick={() => fileRef.current?.click()}>{t('Import a plan file')}</Button>
@@ -681,7 +860,6 @@ function RoutineExport({ routineId, close }) {
   const exportFile = async () => {
     const json = JSON.stringify(buildPlanBundle(st, r.name, [routineId]), null, 2)
     const name = 'opengym-routine-' + safeName(r.name) + '-' + todayISO() + '.json'
-    if (MOBILE) { try { await shareExport(json, name) } catch (e) { /* dismissed */ } close(); return }
     const blob = new Blob([json], { type: 'application/json' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href)
     close(); toast(t('Plan file saved — send it to a friend'))
@@ -690,11 +868,9 @@ function RoutineExport({ routineId, close }) {
     <h3>{t('Share this routine')}</h3>
     <div className="muted small" style={{ marginBottom: 16 }}>{t('A small file a friend imports into their own Personal Open Gym — routines only, none of your workouts or weigh-ins.')}</div>
     <Button variant="primary" icon="upload" onClick={exportFile} disabled={empty}>{t('Export routine file')}</Button>
-    {!MOBILE && <>
-      <div style={{ height: 12 }} />
-      <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, r.name, [routineId]) }} disabled={empty}>{t('Print / Save as PDF')}</Button>
-      <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A clean one-page-per-plan printout — no exercise ever splits across a page.')}</div>
-    </>}
+    <div style={{ height: 12 }} />
+    <Button variant="tinted" icon="download" onClick={() => { close(); printPlan(st, r.name, [routineId]) }} disabled={empty}>{t('Print / Save as PDF')}</Button>
+    <div className="dim small" style={{ margin: '7px 2px 0', lineHeight: 1.4 }}>{t('A clean one-page-per-plan printout — no exercise ever splits across a page.')}</div>
     {empty && <div className="dim small" style={{ margin: '12px 2px 0' }}>{t('Add an exercise to a routine first — an empty plan has nothing to share.')}</div>}
   </>
 }
@@ -749,7 +925,6 @@ function WorkoutDetail({ w, close }) {
     const b = buildDayExport(st, w.d)
     if (!b.rows.length) { toast(t('No sets logged that day')); return }
     const name = dayFilename(w.d, ext)
-    if (MOBILE) { shareExport(ext === 'csv' ? b.csv : JSON.stringify(b, null, 2), name).catch(() => {}); return }
     downloadFile(ext === 'csv' ? b.csv : JSON.stringify(b, null, 2), name, ext === 'csv' ? 'text/csv' : 'application/json')
     toast(t('Day exported'))
   }
@@ -839,6 +1014,20 @@ export function beginWorkout(routineId, bw) {
   // right weight already on the screen instead of being told about it afterwards. `plan` is
   // kept on the entry purely so the workout can explain the number it chose.
   const entries = (r ? r.ex : []).map(cfg => {
+    // Percentage programming (5/3/1-style) is decided before the progression engine, because
+    // the two would otherwise argue about the same number: the wave says 85 % of your training
+    // max, the engine says "you hit every rep, add 2.5". The wave wins the weight and the reps,
+    // and its reason line is what the workout shows — an exercise configured with a wave is not
+    // also being auto-progressed, and the row must not imply it is.
+    const pct = pctSets(st, cfg, { inc: defaultIncrement(cfg.id, st.unit) })
+    if (pct && pct.ok) {
+      return { id: cfg.id, sg: cfg.sg, target: { ...cfg }, plan: { policy: 'pct', kind: 'pct', why: pct.why }, sets: pct.sets.map(s => ({ ...s, done: false })) }
+    }
+    // Configured for percentages with no 1RM on record yet: say that, and fall back to the
+    // plan's own weights rather than to an auto-progression that would fight the wave later.
+    if (pct && !pct.ok) {
+      return { id: cfg.id, sg: cfg.sg, target: { ...cfg }, plan: { policy: 'pct', kind: 'hold', why: pct.why }, sets: buildSets(st, cfg) }
+    }
     const plan = nextPrescription(st, cfg, r)
     return { id: cfg.id, sg: cfg.sg, target: { ...cfg }, plan, sets: applyPrescription(buildSets(st, cfg), plan) }
   })
@@ -1053,7 +1242,6 @@ function ExerciseHistory({ exId, close }) {
     if (!b.rows.length) { toast(t('No sets logged for this exercise yet')); return }
     const filename = exerciseFilename(st, exId, ext)
     const content = ext === 'csv' ? b.csv : JSON.stringify(b, null, 2)
-    if (MOBILE) { shareExport(content, filename).catch(() => {}); return }
     downloadFile(content, filename, ext === 'csv' ? 'text/csv' : 'application/json')
     toast(t('Exercise exported'))
   }
@@ -1112,7 +1300,6 @@ function DayExportPicker({ close }) {
     if (!b.rows.length) return
     const filename = dayFilename(iso, ext)
     const content = ext === 'csv' ? b.csv : JSON.stringify(b, null, 2)
-    if (MOBILE) { shareExport(content, filename).catch(() => {}); return }
     downloadFile(content, filename, ext === 'csv' ? 'text/csv' : 'application/json')
     toast(t('Day exported'))
   }

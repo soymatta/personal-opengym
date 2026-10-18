@@ -21,7 +21,14 @@ export const DEF = {
   reminder: { on: false, time: '08:00', tz: null }, effort: null,
   // injuries: the joints to warn about, from the fixed set in lib/injuries.js. An empty list is
   // the default and means the app says nothing — the warning is opt-in, never assumed.
-  injuries: []
+  injuries: [],
+  // notes: free text per exercise id ("seat at 3", "left shoulder pinches"). Written to be read
+  // in the workout, so it is shown on the exercise block, not buried in a detail screen. An
+  // exercise with no note has no key at all — the map stays as small as the notes in it.
+  notes: {},
+  // measures: tape measurements, one entry per day, every site in centimetres (see lib/measures.js
+  // for why the unit is not the profile's). Sits beside `bodyweight` — same idea, more sites.
+  measures: []
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 

@@ -5,9 +5,9 @@ import { EXIDX, exName } from '../lib/exercises.js'
 import { lastBW, streakWeeks, setLabel, modeOf, effortOf } from '../lib/history.js'
 import { fmtNum, fmtDate, fmtVol, todayISO, weekKey } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
-import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor, exerciseHistorySheet, exerciseExportPicker, dayExportPicker } from '../sheets.jsx'
+import { bwSheet, goalSheet, calendarSheet, workoutDetailSheet, WorkoutRow, bwDeltaColor, exerciseHistorySheet, exerciseExportPicker, dayExportPicker, measuresSheet } from '../sheets.jsx'
 import { exerciseRecords, exerciseVolumeSeries, buildExerciseExport, downloadFile, exerciseFilename } from '../lib/history-export.js'
-import { MOBILE, shareExport } from '../lib/mobile.js'
+import { sitesIn, siteKey, latestOf, changeOf, lenUnit, toLen } from '../lib/measures.js'
 import LineChart from '../components/LineChart.jsx'
 import Heatmap from '../components/Heatmap.jsx'
 import Icon from '../components/Icon.jsx'
@@ -147,6 +147,8 @@ export default function Stats() {
     .map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
   const bw30 = S.bodyweight.filter(b => (b.t || new Date(b.d).getTime()) > now - 30 * 86400000)
   const bwDelta30 = bw30.length > 1 ? bw30[bw30.length - 1].w - bw30[0].w : null
+  const msrSites = sitesIn(S.measures)
+  const lenU = lenUnit(S.unit)
   const monthW = S.workouts.filter(w => w.d.slice(0, 7) === todayISO().slice(0, 7)).length
 
   const exHist = [...new Set(S.workouts.flatMap(w => w.entries.map(e => e.id)))].filter(id => EXIDX[id]).sort((a, b) => exName(a).localeCompare(exName(b)))
@@ -206,7 +208,6 @@ export default function Stats() {
     if (!b.rows.length) return
     const filename = exerciseFilename(S, curEx, ext)
     const content = ext === 'csv' ? b.csv : JSON.stringify(b, null, 2)
-    if (MOBILE) { shareExport(content, filename).catch(() => {}); return }
     downloadFile(content, filename, ext === 'csv' ? 'text/csv' : 'application/json')
   }
 
@@ -231,7 +232,9 @@ export default function Stats() {
 
     <div className="cols">
       <div className="card">
-        <div className="row between" style={{ marginBottom: 8 }}>
+        {/* Wraps on a 320px phone in German and Hindi: the title cannot shrink and neither can
+            the buttons, so at some width the row has to break rather than overflow the card. */}
+        <div className="row between" style={{ marginBottom: 8, flexWrap: 'wrap', rowGap: 8 }}>
           <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
           <div className="row" style={{ gap: 8 }}>
             <Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) : t('Goal')}</Button>
@@ -241,6 +244,30 @@ export default function Stats() {
         <Segmented className="seg-range" value={range} onChange={setRange}
           options={[{ value: 30, label: '1M' }, { value: 90, label: '3M' }, { value: 365, label: '1Y' }, { value: 0, label: t('All') }]} />
         <div className="chart"><LineChart points={bwPts} h={160} unit={S.unit} goal={S.targetW} /></div>
+      </div>
+
+      <div className="card">
+        <div className="row between" style={{ marginBottom: 8, flexWrap: 'wrap', rowGap: 8 }}>
+          <h2 style={{ margin: 0 }}>{t('Measurements')}</h2>
+          <Button size="sm" icon="plus" onClick={() => measuresSheet()}>{t('Log')}</Button>
+        </div>
+        {/* The tape, next to the scale. No colour on a change: shrinking a waist and growing an
+            arm are both progress, and a single red/green rule would be wrong on half the rows. */}
+        {msrSites.length === 0
+          ? <div className="muted small">{t('Waist, arms, chest — measured with a tape, tracked next to your weight.')}</div>
+          : <div className="list" style={{ gap: 0 }}>
+            {msrSites.map(site => {
+              const last = latestOf(S.measures, site)
+              const ch = changeOf(S.measures, site)
+              return <div key={site} className="row between" style={{ padding: '9px 2px', borderBottom: '1px solid var(--sep)' }}>
+                <span className="small muted">{t(siteKey(site))}</span>
+                <span className="row" style={{ gap: 8 }}>
+                  <b>{fmtNum(toLen(last.v, lenU))} {lenU}</b>
+                  {ch && ch.sessions > 1 && <span className="small dim">{(ch.diff > 0 ? '+' : '') + fmtNum(toLen(ch.diff, lenU))}</span>}
+                </span>
+              </div>
+            })}
+          </div>}
       </div>
 
       <div className="card">

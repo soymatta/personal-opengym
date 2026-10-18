@@ -925,3 +925,19 @@ h4.sec{
   .exmedia img{height:380px}
   .hm-wrap{display:flex;flex-direction:column;align-items:center}
 }
+
+/* ---------- plate calculator: a bar with the plates in the order they go on ---------- */
+/* Heights are set per plate from its actual weight (see PlateSheet), so a 45 lb disc and a
+   25 kg disc are both drawn as what they are — the picture stays honest across units. */
+.barvis{
+  flex:none;align-self:center;width:78px;height:5px;border-radius:3px;
+  background:linear-gradient(90deg,var(--surface-3),var(--label-3),var(--surface-3));
+}
+.platevis{
+  flex:none;align-self:center;border-radius:2.5px;
+  background:var(--surface-3);border:1px solid var(--sep);
+}
+
+/* measurement form: one short numeric field per site */
+.msr-in{width:78px}
+.cfgrow-note{flex:2 1 100%;font-size:14px;padding:6px 2px}

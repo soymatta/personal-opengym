@@ -56,6 +56,21 @@ export const PLAN_LIBRARY = [
     note: 'Mon Push · Wed Pull · Fri Legs. Six exercises a session — the plan Personal Open Gym has always shipped.',
     routines: PPL_SPEC.map(([name, emoji, ex]) => ({ name, emoji, ex })),
     week: { 1: 0, 3: 1, 5: 2 }
+  },
+  {
+    // The other half of "what should a beginner run": three lifts a session, squat every time,
+    // and nothing that needs a coach to teach — the barbell-only linear program (Rippetoe's
+    // Starting Strength and StrongLifts 5×5 are the same shape). It is the plan the app's
+    // linear progression policy was written for, so it needs no `prog` of its own.
+    key: 'strong5x5',
+    icon: 'barbell',
+    name: '5×5 · A / B',
+    note: 'Squat every session. Mon + Fri: bench press and row, 5×5. Wed: overhead press 5×5 and a single heavy set of five deadlifts.',
+    routines: [
+      { name: '5×5 A', emoji: 'barbell', ex: [['0043', 5, 5], ['0025', 5, 5], ['0027', 5, 5]] },
+      { name: '5×5 B', emoji: 'barbell', ex: [['0043', 5, 5], ['0091', 5, 5], ['0032', 1, 5]] }
+    ],
+    week: { 1: 0, 3: 1, 5: 0 }
   }
 ]
 

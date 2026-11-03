@@ -340,5 +340,5 @@ console.log(`${used.size} t('…') literals in src/ — all translated${allowed.
 const stale = union.filter(k => !used.has(k))
 if (stale.length) {
   if (process.argv.includes('--stale')) console.log(JSON.stringify(stale, null, 2))
-  else console.log(`${stale.length} keys no component asks for — dead translations, delete candidates (--stale lists them).`)
+  else console.log(`${stale.length} keys no component asks for by literal. Computed keys (t(DAYN[d]), t(plan.note), t(ex.eq)…) land in this list too, so it is not a delete list: src/lib/i18n-data.test.js proves which of them the data actually requires. Check both before deleting anything (--stale lists them).`)
 }

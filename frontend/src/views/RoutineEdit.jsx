@@ -1,10 +1,12 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useStore } from '../store/useStore.js'
+import { useUI } from '../store/useUI.js'
 import { exOr, exName } from '../lib/exercises.js'
 import { uid } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
 import { supersetUnits, cleanupSg, exLine } from '../lib/history.js'
+import { swapEntry } from '../lib/replacements.js'
 import { Thumb } from '../components/Media.jsx'
 import { glyphPicker, exercisePicker, exConfigSheet, confirmSheet, routineExportSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
@@ -54,9 +56,18 @@ export default function RoutineEdit() {
       <SelectRow icon="chartLine" title={t('Progression')} sheetTitle={t('Progression')}
         value={r.prog || 'linear'} onChange={v => update(s => { s.routines.find(x => x.id === id).prog = v })}
         options={POLICIES_FOR.reps.map(p => ({ value: p, label: t(POLICY_NAME[p]), subtitle: t(POLICY_DESC[p]) }))} />
+      {/* -1 is the "off" sentinel: the field is dropped rather than stored as null, so a routine
+          that never set a target looks the same as one that cleared it. */}
+      <SelectRow icon="target" title={t('Target effort')} sheetTitle={t('Target effort')}
+        value={r.rir ?? -1}
+        onChange={v => update(s => { const x = s.routines.find(x => x.id === id); if (v < 0) delete x.rir; else x.rir = v })}
+        options={[{ value: -1, label: t('No target') }, ...[0, 1, 2, 3, 4, 5].map(n => ({ value: n, label: t('RIR {0}', n) }))]} />
     </div>
     <div className="small dim" style={{ margin: '-10px 2px 16px' }}>
       {t('Applies to every exercise in this routine that does not set its own rule.')}
+    </div>
+    <div className="small dim" style={{ margin: '-10px 2px 16px' }}>
+      {t('RIR is how many reps you should still have left at the end of a set — 0 means failure.')}
     </div>
 
     {r.ex.length ? <div className="list">{r.ex.map((e, i) => {
@@ -67,7 +78,12 @@ export default function RoutineEdit() {
       return <div key={i}>
         {unitFirst.has(i) && <div className="ss-label"><Icon name="link" />{t('Superset')}</div>}
         <div className={'item' + (inSS.has(i) ? ' in-ss' : '')} onClick={() => {
-          exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, ...cfg } }), () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r)
+          exConfigSheet(ex, e, cfg => edit(x => { x[i] = { id: x[i].id, sg: x[i].sg, ...cfg } }), () => edit(x => { x.splice(i, 1); cleanupSg(x) }), r, next => {
+            // A swap keeps the prescription and the superset link and drops the load — a
+            // training max belongs to the movement it was measured on (see swapEntry).
+            edit(x => { x[i] = swapEntry(x[i], next) })
+            useUI.getState().toast(t('{0} replaced with {1}', exName(ex), exName(next)))
+          })
         }}>
           <Thumb ex={ex} />
           <div className="grow"><div className="tt">{exName(ex)}</div><div className="ss">{exLine(e, S.unit)}</div></div>

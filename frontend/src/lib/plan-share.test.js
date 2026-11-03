@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cleanEx, routineFromSession, buildPlanBundle, parsePlan, planPrintHTML } from './plan-share.js'
+import { cleanEx, routineFromSession, buildPlanBundle, parsePlan, mergePlan, planPrintHTML } from './plan-share.js'
 import { t } from './i18n.js'
 
 // A finished freestyle session: ids, the set count actually performed, and the targets the
@@ -16,7 +16,7 @@ const SESSION = {
 }
 
 const ROUTINE_A = {
-  id: 'rA', name: 'Push Day', emoji: 'barbell', prog: 'double',
+  id: 'rA', name: 'Push Day', emoji: 'barbell', prog: 'double', rir: 2,
   ex: [{ id: '0025', sets: 4, reps: 8, weight: 0 }]
 }
 const ROUTINE_B = {
@@ -40,6 +40,13 @@ describe('routineFromSession', () => {
     expect(r.emoji).toBe('barbell')
     expect(r.id).toBeTruthy()
     expect(r.ex.map(e => e.id)).toEqual(['0025', '0043'])
+  })
+
+  it('carries the effort target the session was run at', () => {
+    const A = { entries: [{ id: '0025', rir: 2, sets: [{ w: 60, r: 8 }], target: { sets: 1, reps: 8 } }] }
+    expect(routineFromSession(A, 'x', 'barbell').rir).toBe(2)
+    // A freestyle session with no target must not invent one.
+    expect(routineFromSession(SESSION, 'x', 'barbell').rir).toBeUndefined()
   })
 
   it('saves the sets that were actually done, not the ones prescribed', () => {
@@ -106,6 +113,14 @@ describe('buildPlanBundle', () => {
     expect(parsed.dropped).toBe(0)
   })
 
+  it('carries the effort target the routine was prescribed at', () => {
+    // A shared plan that arrives without it leaves the recipient guessing how hard each set is
+    // meant to be — the one number the session shows back to them.
+    const b = buildPlanBundle(S, '')
+    expect(b.routines[0].rir).toBe(2)
+    expect(b.routines[1].rir).toBeUndefined()
+  })
+
   it('keeps the week, dropping days that point at a routine that no longer exists', () => {
     expect(buildPlanBundle(S, '').week).toEqual({ 1: 'rA', 4: 'rB' })
   })
@@ -138,6 +153,14 @@ describe('buildPlanBundle', () => {
     const b = buildPlanBundle({ unit: 'kg' }, 'Empty')
     expect(b.routines).toEqual([])
     expect(b.week).toEqual({})
+  })
+})
+
+describe('mergePlan', () => {
+  it('keeps the effort target when an imported routine lands', () => {
+    const s = { routines: [], week: {}, customEx: [] }
+    mergePlan(s, parsePlan(JSON.stringify(buildPlanBundle(S, ''))))
+    expect(s.routines[0].rir).toBe(2)
   })
 })
 

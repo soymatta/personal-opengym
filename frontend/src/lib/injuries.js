@@ -33,7 +33,10 @@ const SPEC = {
     names: /\b(deadlift|good morning|back extension|hyperextension|bent over|t-?bar|superman)\b/i,
   },
   shoulder: {
-    muscles: ['delts', 'deltoids', 'rotator cuff', 'serratus anterior', 'lats'],
+    // `sm` spells the deltoid both ways in the dataset ("shoulders" on a bench press, "rear
+    // deltoids" on a pulldown) while `tg` says "delts" — all three have to be here, or a
+    // shoulder niggle stays quiet through every press.
+    muscles: ['delts', 'deltoids', 'rear deltoids', 'shoulders', 'rotator cuff', 'serratus anterior', 'lats'],
     names: /\b(overhead press|military press|shoulder press|arnold|upright row|behind the neck|pull-?up|chin-?up|snatch|jerk|dip)\b/i,
   },
   elbow: {

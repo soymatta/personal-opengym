@@ -55,7 +55,7 @@ export function buildPlanBundle(S, name, only) {
   const keep = only ? new Set(only) : null
   const source = (S.routines || []).filter(r => !keep || keep.has(r.id))
   const routines = source.map(r => ({
-    id: r.id, name: r.name, emoji: r.emoji, ...(r.prog ? { prog: r.prog } : {}), ex: (r.ex || []).map(cleanEx)
+    id: r.id, name: r.name, emoji: r.emoji, ...(r.prog ? { prog: r.prog } : {}), ...(r.rir != null ? { rir: r.rir } : {}), ex: (r.ex || []).map(cleanEx)
   }))
   const usedIds = new Set(routines.flatMap(r => r.ex.map(e => e.id)))
   const customEx = (S.customEx || [])
@@ -87,7 +87,10 @@ export function routineFromSession(A, name, emoji) {
   const ex = (A.entries || [])
     .filter(e => (e.sets || []).length)
     .map(e => cleanEx({ ...(e.target || {}), id: e.id, sets: e.sets.length, sg: e.sg || e.target?.sg }))
-  return { id: uid(), name, emoji, ex }
+  // Saving the session as a routine should also save how hard it was meant to be — otherwise
+  // repeating it next week loses the only prescription the workout screens showed.
+  const rir = (A.entries || []).find(e => e.rir != null)?.rir
+  return { id: uid(), name, emoji, ...(rir != null ? { rir } : {}), ex }
 }
 
 
@@ -154,6 +157,9 @@ export function mergePlan(s, bundle, { schedule } = {}) {
       name: r.name || t('Shared routine'),
       emoji: r.emoji,
       ...(r.prog ? { prog: r.prog } : {}),
+      // An imported target is a prescription, not a preference of the importer — it travels with
+      // the routine the same way progression does, or the shared plan arrives half-explained.
+      ...(r.rir != null ? { rir: r.rir } : {}),
       ex: (r.ex || []).map(e => ({ ...e, id: exIdMap[e.id] || e.id }))
     })
   })

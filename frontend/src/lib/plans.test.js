@@ -76,10 +76,37 @@ describe('planRoutines', () => {
     expect(first).toMatchObject({ id: '0025', sets: 4, reps: 8, weight: 0 })
   })
 
-  it('carries the progression policy only where the plan sets one', () => {
+  it('carries the progression policy the plan prescribes', () => {
     expect(planRoutines(planOf('fullbody'))[0].prog).toBe('greyskull')
     expect(planRoutines(planOf('upperlower'))[0].prog).toBe('double')
-    expect(planRoutines(planOf('ppl'))[0].prog).toBeUndefined()
+    // PPL logs 8–15 reps: double progression is the rule that fits a rep range the plan already
+    // prescribes — it holds the load until the top is reached. Not a claim that linear is worse:
+    // load and rep progression adapt similarly once volume-load is matched (Plotkin et al. 2022,
+    // PeerJ, doi:10.7717/peerj.14142).
+    expect(planRoutines(planOf('ppl'))[0].prog).toBe('double')
+    // 5×5 has no policy on purpose: 3–6 rep barbell work is exactly what `linear` was written
+    // for, so it takes the default rather than naming a rule.
+    expect(planRoutines(planOf('strong5x5'))[0].prog).toBeUndefined()
+  })
+
+  it('carries an effort target so the session can say what to leave in reserve', () => {
+    for (const plan of PLAN_LIBRARY) {
+      for (const r of planRoutines(plan)) {
+        expect(r.rir, plan.key).toBeGreaterThanOrEqual(0)
+        expect(r.rir, plan.key).toBeLessThanOrEqual(5)
+      }
+    }
+    // Hypertrophy work stops about two reps short; the load-driven novice program leaves three,
+    // because the bar is already the limit on the next session.
+    expect(planRoutines(planOf('upperlower'))[0].rir).toBe(2)
+    expect(planRoutines(planOf('ppl'))[0].rir).toBe(2)
+    expect(planRoutines(planOf('strong5x5'))[0].rir).toBe(3)
+  })
+
+  it('keeps the PPL note honest about six exercises a session', () => {
+    // The note is a promise about the data. The pull day had five for a while — one vertical
+    // pull, which left the lats under the volume they need — and nothing caught the drift.
+    for (const r of planOf('ppl').routines) expect(r.ex).toHaveLength(6)
   })
 
   it('does not mutate the shared library entry', () => {

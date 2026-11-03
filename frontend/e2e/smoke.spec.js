@@ -59,6 +59,15 @@ test('Settings opens from Home and never asks for a login', async ({ page }) => 
   await expect(page.getByRole('button', { name: /passkey/i })).toHaveCount(0)
 })
 
+test('the encrypted vault card offers a login without gating the app', async ({ page }) => {
+  await page.goto('/#/settings')
+  // Optional, local-first: the card exists, but nothing blocks the rest of the screen.
+  await expect(page.getByText('Encrypted sync')).toBeVisible()
+  await expect(page.getByPlaceholder('GitHub token')).toBeVisible()
+  await expect(page.getByPlaceholder('Passphrase')).toBeVisible()
+  await expect(page.getByText('No account needed')).toBeVisible()
+})
+
 test('a fresh install can load the starter plan', async ({ page }) => {
   await page.goto('/#/home')
   await expect(page.getByText('Welcome!')).toBeVisible()

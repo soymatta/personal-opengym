@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
-import { EXDB, EXIDX, BODYPARTS, isCardio, allExercises, equipmentOf, exName } from './lib/exercises.js'
+import { EXDB, EXIDX, BODYPARTS, isCardio, allExercises, equipmentOf, exName, exOr, matchesQuery } from './lib/exercises.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
 import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
@@ -14,7 +14,7 @@ import Icon from './components/Icon.jsx'
 import { Button, Slider, Switch, Segmented, SelectRow, TextArea, NumberField } from './components/ui.jsx'
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
-import { loadOfWorkouts } from './lib/muscles.js'
+import { loadOfWorkouts, MUSCLE_NAME } from './lib/muscles.js'
 import { parseImport, mergeImport } from './lib/import-csv.js'
 import { buildPlanBundle, parsePlan, mergePlan, printPlan, routineFromSession } from './lib/plan-share.js'
 import { exerciseRows, dayRows, buildExerciseExport, buildDayExport, downloadFile, exerciseFilename, dayFilename, safeName } from './lib/history-export.js'
@@ -22,6 +22,7 @@ import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC } from './lib/progression.js'
 import { pctSets, usesPct, WAVES, waveReps, trainingMax } from './lib/percent.js'
 import { loadFor, barOf, BARS } from './lib/plates.js'
+import { equivalentsOf } from './lib/replacements.js'
 import { SITES, siteKey, lenUnit, toLen, toCm, setMeasure } from './lib/measures.js'
 
 const S = () => useStore.getState().S
@@ -441,7 +442,7 @@ function ExerciseDetail({ ex, close }) {
   const best = bestWeightFor(st, ex.id)
   return <>
     <h3>{exName(ex)}</h3>
-    <Media ex={ex} />
+    <Media ex={ex} key={ex.id} />
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '10px 0' }}>
       <span className="tag acc">{t(ex.bp)}</span>
       {ex.tg && <span className="tag"><Icon name="target" />{t(ex.tg)}</span>}
@@ -451,6 +452,7 @@ function ExerciseDetail({ ex, close }) {
     {ex.desc && <div className="exnote">{ex.desc}</div>}
     {best > 0 && <div className="small row" style={{ marginBottom: 6, gap: 5 }}><Icon name="trophy" style={{ fontSize: 14, color: 'var(--yellow)' }} />{t('Best:')} <b className="accent">{fmtNum(best)} {st.unit}</b>{last ? ` · ${t('last')} ${fmtDate(last.d)}: ${last.sets.map(s => setLabel(ex.id, s, last.target)).join(', ')}` : ''}</div>}
     <Button variant="primary" icon="plus" style={{ margin: '10px 0 4px' }} onClick={() => addToRoutineSheet(ex)}>{t('Add to my plan')}</Button>
+    <Button icon="shuffle" style={{ margin: '0 0 4px' }} onClick={() => { close(); replaceSheet(ex, next => exerciseDetailSheet(next)) }}>{t('Find a replacement')}</Button>
     {ex.custom && <div className="row" style={{ gap: 8, marginTop: 8 }}>
       <Button icon="pencil" style={{ flex: 1 }} onClick={() => { close(); customExSheet(ex) }}>{t('Edit')}</Button>
       <Button variant="danger" icon="trash" style={{ flex: 1 }} onClick={() => deleteCustomEx(ex, close)}>{t('Delete')}</Button>
@@ -461,6 +463,54 @@ function ExerciseDetail({ ex, close }) {
   </>
 }
 export const exerciseDetailSheet = ex => ui().openSheet(close => <ExerciseDetail ex={ex} close={close} />)
+
+/* ============================ replace exercise ============================ */
+// The candidate list is the fitness-coach agent's substitution rules (see lib/replacements.js),
+// not "everything in the same body part". Two lists on purpose: an equivalent is a drop-in,
+// while the same muscle with a different movement changes where the muscle grows, so it is
+// labelled instead of being offered as if the swap were invisible.
+function ReplaceSheet({ ex, onPick, close }) {
+  const st = useStore(s => s.S)
+  const { exact, similar } = equivalentsOf(ex, { pool: allExercises(st), injuries: st.injuries || [] })
+  const row = (c, dropIn) => (
+    <div className="item" key={c.ex.id} onClick={() => { close(); onPick(c.ex) }}>
+      <Thumb ex={c.ex} />
+      <div className="grow">
+        <div className="tt">{exName(c.ex)}</div>
+        <div className="ss capitalize">{t(c.ex.eq)} · {t(c.ex.tg || c.ex.bp)}</div>
+        <div className="row" style={{ gap: 5, flexWrap: 'wrap', marginTop: 6 }}>
+          {c.risk.length > 0 && <span className="tag nocap" style={{ color: 'var(--yellow)' }}>
+            {t('Loads your injured {0}', c.risk.map(j => t(j)).join(' · '))}
+          </span>}
+          {!dropIn && <span className="tag nocap">{c.why === 'demand' ? t('Different demand') : t('Different movement')}</span>}
+          {c.sameEquipment && <span className="tag nocap">{t('Same equipment')}</span>}
+          {c.shared.length > 0 && <span className="tag nocap">
+            {t('Also trains: {0}', c.shared.slice(0, 2).map(m => t(MUSCLE_NAME[m])).join(' · '))}
+          </span>}
+        </div>
+      </div>
+      <Icon name="chevronRight" className="chev" />
+    </div>
+  )
+  return <>
+    <h3>{t('Replace {0}', exName(ex))}</h3>
+    <div className="small dim" style={{ marginBottom: 12 }}>
+      {t('Same movement and target muscle, ranked by shared muscles and equipment.')}
+    </div>
+    {exact.length > 0 && <div className="list">{exact.map(c => row(c, true))}</div>}
+    {similar.length > 0 && <>
+      <h4 className="sec">{t('Not a direct swap')}</h4>
+      <div className="small dim" style={{ margin: '-4px 2px 8px' }}>
+        {t('It trains the same muscle, but the stimulus changes.')}
+      </div>
+      <div className="list">{similar.map(c => row(c, false))}</div>
+    </>}
+    {!exact.length && !similar.length && <div className="empty">
+      <div className="ico"><Icon name="shuffle" /></div>{t('No equivalent in the library.')}
+    </div>}
+  </>
+}
+export const replaceSheet = (ex, onPick) => ui().openSheet(close => <ReplaceSheet ex={ex} onPick={onPick} close={close} />)
 
 /* ============================ add to routine ============================ */
 function AddToRoutine({ ex, close }) {
@@ -571,13 +621,10 @@ function ExercisePicker({ onPick, close }) {
   const [bp, setBp] = useState('')          // '' = all, '★' = chosen, else a body part
   const [eq, setEq] = useState('')          // '' = any equipment
   const [shown, setShown] = useState(50)
-  const ql = q.toLowerCase().trim()
   const all = allExercises(st)
-  let base = all.filter(e =>
-    (bp === '★' ? usage[e.id] : (!bp || e.bp === bp)) &&
-    // Both names are searched: someone who switched to Spanish may still type "squat", and
-    // someone who never left English must not lose an exercise that now shows in Spanish.
-    (!ql || exName(e).toLowerCase().includes(ql) || e.n.toLowerCase().includes(ql) || e.tg.includes(ql) || e.eq.includes(ql) || (e.desc || '').toLowerCase().includes(ql)))
+  // Both names are searched: someone who switched to Spanish may still type "squat", and
+  // someone who never left English must not lose an exercise that now shows in Spanish.
+  let base = all.filter(e => (bp === '★' ? usage[e.id] : (!bp || e.bp === bp)) && matchesQuery(e, q))
   if (bp === '★') base = [...base].sort((a, b) => (usage[b.id] - usage[a.id]) || exName(a).localeCompare(exName(b)))
   const eqOpts = equipmentOf(base)
   // Drop the equipment filter if the search narrowed it away, so you never hit a dead end.
@@ -649,7 +696,7 @@ function tmNote(S, cfg) {
   return t('No estimated 1RM yet — log a working set of this exercise and the percentages fill in.')
 }
 
-function ExConfig({ ex, existing, onSave, onDelete, close, routine }) {
+function ExConfig({ ex, existing, onSave, onDelete, close, routine, onReplace }) {
   const st = useStore(s => s.S)
   const cardio = isCardio(ex.id)
   const [c, setC] = useState(existing || defaultConfig(ex.id))
@@ -687,7 +734,7 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine }) {
   }
   return <>
     <h3>{exName(ex)}</h3>
-    <Media ex={ex} />
+    <Media ex={ex} key={ex.id} />
     <div className="row" style={{ gap: 6, flexWrap: 'wrap', margin: '10px 0 14px' }}>
       {cardio && <span className="tag acc"><Icon name="figureRun" />{t('Cardio')}</span>}
       <span className="tag">{t(ex.tg || ex.bp)}</span><span className="tag">{t(ex.eq)}</span>
@@ -739,11 +786,14 @@ function ExConfig({ ex, existing, onSave, onDelete, close, routine }) {
     </>}
     <ProgressionFields ex={ex} mode={mode} c={c} setC={setC} routine={routine} unit={st.unit} />
     <Button variant="primary" onClick={save}>{existing ? t('Save') : t('Add to routine')}</Button>
+    {/* Only while editing a routine entry: from the exercise library there is nothing to
+        replace, which is why that screen offers "find a replacement" instead. */}
+    {onReplace && <><div style={{ height: 8 }} /><Button icon="shuffle" onClick={() => replaceSheet(ex, next => { close(); onReplace(next) })}>{t('Replace exercise')}</Button></>}
     {ex.custom && <><div style={{ height: 8 }} /><Button icon="pencil" onClick={() => { close(); customExSheet(ex) }}>{t('Edit or delete this exercise')}</Button></>}
     {onDelete && <><div style={{ height: 8 }} /><Button variant="danger" onClick={() => { close(); onDelete() }}>{t('Remove from routine')}</Button></>}
   </>
 }
-export const exConfigSheet = (ex, existing, onSave, onDelete, routine) => ui().openSheet(close => <ExConfig ex={ex} existing={existing} onSave={onSave} onDelete={onDelete} routine={routine} close={close} />)
+export const exConfigSheet = (ex, existing, onSave, onDelete, routine, onReplace) => ui().openSheet(close => <ExConfig ex={ex} existing={existing} onSave={onSave} onDelete={onDelete} routine={routine} close={close} onReplace={onReplace} />)
 
 /* ============================ glyph picker ============================ */
 // Grouped by what the glyph means for a training day, so picking one is a scan
@@ -1014,6 +1064,10 @@ export function beginWorkout(routineId, bw) {
   // right weight already on the screen instead of being told about it afterwards. `plan` is
   // kept on the entry purely so the workout can explain the number it chose.
   const entries = (r ? r.ex : []).map(cfg => {
+    // The routine's effort target rides on the entry so the session can say "leave about 2 in
+    // reserve" without re-reading the routine — and so a routine edited mid-workout cannot
+    // silently change the target under the person already lifting.
+    const rir = r && r.rir != null ? r.rir : null
     // Percentage programming (5/3/1-style) is decided before the progression engine, because
     // the two would otherwise argue about the same number: the wave says 85 % of your training
     // max, the engine says "you hit every rep, add 2.5". The wave wins the weight and the reps,
@@ -1021,15 +1075,15 @@ export function beginWorkout(routineId, bw) {
     // also being auto-progressed, and the row must not imply it is.
     const pct = pctSets(st, cfg, { inc: defaultIncrement(cfg.id, st.unit) })
     if (pct && pct.ok) {
-      return { id: cfg.id, sg: cfg.sg, target: { ...cfg }, plan: { policy: 'pct', kind: 'pct', why: pct.why }, sets: pct.sets.map(s => ({ ...s, done: false })) }
+      return { id: cfg.id, sg: cfg.sg, ...(rir != null ? { rir } : {}), target: { ...cfg }, plan: { policy: 'pct', kind: 'pct', why: pct.why }, sets: pct.sets.map(s => ({ ...s, done: false })) }
     }
     // Configured for percentages with no 1RM on record yet: say that, and fall back to the
     // plan's own weights rather than to an auto-progression that would fight the wave later.
     if (pct && !pct.ok) {
-      return { id: cfg.id, sg: cfg.sg, target: { ...cfg }, plan: { policy: 'pct', kind: 'hold', why: pct.why }, sets: buildSets(st, cfg) }
+      return { id: cfg.id, sg: cfg.sg, ...(rir != null ? { rir } : {}), target: { ...cfg }, plan: { policy: 'pct', kind: 'hold', why: pct.why }, sets: buildSets(st, cfg) }
     }
     const plan = nextPrescription(st, cfg, r)
-    return { id: cfg.id, sg: cfg.sg, target: { ...cfg }, plan, sets: applyPrescription(buildSets(st, cfg), plan) }
+    return { id: cfg.id, sg: cfg.sg, ...(rir != null ? { rir } : {}), target: { ...cfg }, plan, sets: applyPrescription(buildSets(st, cfg), plan) }
   })
   update(s => {
     s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries }
@@ -1272,8 +1326,7 @@ function ExerciseExportPicker({ close }) {
   const ids = [...new Set((st.workouts || []).flatMap(w => (w.entries || []).map(e => e.id)))]
     .filter(id => EXIDX[id] || (st.customEx || []).some(c => c.id === id))
     .sort()
-  const ql = q.toLowerCase().trim()
-  const f = ql ? ids.filter(id => ((EXIDX[id] || {}).n || '').toLowerCase().includes(ql)) : ids
+  const f = q.trim() ? ids.filter(id => matchesQuery(exOr(id), q)) : ids
   return <>
     <h3>{t('Export by exercise')}</h3>
     <div className="muted small" style={{ marginBottom: 12 }}>{t('Set-by-set history with date, weight, reps, effort and PR flag — as CSV or JSON.')}</div>
@@ -1281,7 +1334,7 @@ function ExerciseExportPicker({ close }) {
       <input className="input" placeholder={t('Search…')} value={q} onChange={e => setQ(e.target.value)} /></div>
     <div className="list" style={{ maxHeight: '44vh', overflowY: 'auto' }}>
       {f.map(id => <div key={id} className="item" onClick={() => { close(); exerciseHistorySheet(id) }}>
-        <div className="grow"><div className="tt capitalize">{(EXIDX[id] || {}).n || id}</div>
+        <div className="grow"><div className="tt">{exName(id)}</div>
           <div className="ss">{t('{0} logged sets', exerciseRows(st, id).length)}</div></div>
         <Icon name="chevronRight" className="chev" />
       </div>)}

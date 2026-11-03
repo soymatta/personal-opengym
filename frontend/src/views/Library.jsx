@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../store/useStore.js'
-import { EXDB, BODYPARTS, allExercises, equipmentOf, exName } from '../lib/exercises.js'
+import { EXDB, BODYPARTS, allExercises, equipmentOf, exName, matchesQuery } from '../lib/exercises.js'
 import { bestWeightFor } from '../lib/history.js'
 import { fmtNum } from '../lib/format.js'
 import { t } from '../lib/i18n.js'
@@ -15,9 +15,9 @@ export default function Library() {
   const [bp, setBp] = useState('')
   const [eq, setEq] = useState('')
   const [shown, setShown] = useState(40)
-  const ql = q.toLowerCase().trim()
-  // Both names are searched: a Spanish speaker may type "sentadilla" and an English one "squat".
-  const base = allExercises(S).filter(e => (!bp || e.bp === bp) && (!ql || exName(e).toLowerCase().includes(ql) || e.n.toLowerCase().includes(ql) || e.tg.includes(ql) || e.eq.includes(ql) || (e.desc || '').toLowerCase().includes(ql)))
+  // Both names are searched, matched accented or not (see matchesQuery): a Spanish speaker may
+  // type "sentadilla" and an English one "squat", and neither should have to get the accents right.
+  const base = allExercises(S).filter(e => (!bp || e.bp === bp) && matchesQuery(e, q))
   const eqOpts = equipmentOf(base)
   // Drop the equipment filter if the search narrowed it away, so you never hit a dead end.
   const eqOn = eqOpts.includes(eq) ? eq : ''

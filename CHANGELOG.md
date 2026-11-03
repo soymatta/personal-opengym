@@ -46,13 +46,13 @@ tape is moving. All of it local, and none of it behind a new screen to hunt for.
 - 🐛 Two bugs the German 320 px check found: the measurement sheet labelled its fields with the
   dataset's body-part vocabulary (a German waist read as "Rumpf"), and the Stats card headers
   pushed the page 9 px wide on a 320 px phone.
-- 🧹 **Under the hood.** `lib/mobile.js` deleted (a `MOBILE = false` flag whose share path could
-  never run) and the unused `IS_APPLE`; the `qa-tester` skill (with its `@opencode-ai/plugin`
-  dependency) moved from `assets/` to the `.opencode/` path it is registered at; the two orphaned
-  screenshots are in the README now. 38 new tests — 329 in all — covering the CSV parsers, the
-  body-bag exercise matcher, unit conversion per row, Apple Health weigh-ins, the import merge and
-  the muscle-load math, including a check that every muscle name is translated in every locale
-  (the one indirection the locale checker cannot see).
+- 🧹 **Under the hood.** The `MOBILE = false` flag and unused `IS_APPLE` were removed; the
+  `qa-tester` skill (with its `@opencode-ai/plugin` dependency) moved from `assets/` to the
+  `.opencode/` path it is registered at; the two orphaned screenshots are in the README now. 38
+  new tests — 329 in all — covering the CSV parsers, the body-bag exercise matcher, unit
+  conversion per row, Apple Health weigh-ins, the import merge and the muscle-load math,
+  including a check that every muscle name is translated in every locale (the one indirection the
+  locale checker cannot see).
 
 ### PWA-only, local-first, AI-free
 
@@ -139,9 +139,8 @@ then a clean failure. A pasted Claude setup token is encrypted at rest with a ke
 the instance secret; Codex's ChatGPT credential stays in Codex's own private cache, mounted
 separately from app data and never copied into `coach.json`.
 
-Documented in **[docs/AI_COACH.md](docs/AI_COACH.md)**, with setup walkthroughs for
-[Claude](Claude-setup-instructions.md) and [ChatGPT/Codex](ChatGPT-setup-instructions.md) and
-the design rationale in [openGym_AI_Strategy.pdf](openGym_AI_Strategy.pdf).
+*These setup documents were part of the AI Coach feature, which has been removed. The app is now
+AI-free.*
 
 ### The effort ratings, read back as statistics
 

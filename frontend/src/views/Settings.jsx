@@ -11,6 +11,7 @@ import { IS_ANDROID } from '../lib/platform.js'
 import { downloadFile } from '../lib/history-export.js'
 import { buildAiExport, aiToNDJSON, aiFilename, readAnyImport } from '../lib/data-export.js'
 import { isSupabaseConfigured, sbSignIn, sbSignUp } from '../lib/supabase.js'
+import { vaultErrorKey } from '../lib/vault.js'
 import { loadStarterPlan, confirmSheet, importFromApp, exerciseExportPicker, dayExportPicker } from '../sheets.jsx'
 import { JOINTS } from '../lib/injuries.js'
 import Icon from '../components/Icon.jsx'
@@ -83,6 +84,8 @@ export default function Settings() {
         onClick={() => window.open(REPO, '_blank', 'noopener')} />
     </Section>
     {!cloud && <p className="sect-f" style={{ marginTop: -18, marginBottom: 22 }}>{t('On this device only — data never leaves this browser unless you export it.')}</p>}
+
+    {!DEMO && <VaultCard />}
 
     {cloud && <SupabaseCard />}
 
@@ -251,6 +254,100 @@ function effortHelpSheet() {
     </div>
     <div style={{ height: 8 }} />
   </>)
+}
+
+// Optional encrypted sync — a login with no server and no database. The passphrase derives the
+// key on this device (lib/crypto.js) and GitHub only stores the sealed document (lib/vault.js),
+// so the same token + passphrase on any instance of the app reads the same training.
+function VaultCard() {
+  const toast = useUI(s => s.toast)
+  const vaultOn = useStore(s => s.vaultOn)
+  const vaultUser = useStore(s => s.vaultUser)
+  const connect = useStore(s => s.vaultConnect)
+  const unlock = useStore(s => s.vaultUnlock)
+  const lock = useStore(s => s.vaultLock)
+  const pullState = useStore(s => s.pullState)
+  const pushState = useStore(s => s.pushState)
+  const [token, setToken] = useState('')
+  const [pass, setPass] = useState('')
+  const [remember, setRemember] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const fail = e => setErr(t(vaultErrorKey(e)))
+
+  const submit = async () => {
+    setErr('')
+    if (vaultOn) {
+      if (!pass) { setErr(t('Enter your passphrase')); return }
+      setBusy(true)
+      try { await unlock(pass); setPass(''); toast(t('Unlocked — pulled the latest')) }
+      catch (e) { fail(e) }
+      setBusy(false)
+      return
+    }
+    if (!token.trim() || !pass) { setErr(t('Enter a GitHub token and a passphrase')); return }
+    if (pass.length < 10) { setErr(t('Passphrase needs at least 10 characters')); return }
+    setBusy(true)
+    try {
+      const res = await connect(token.trim(), pass, remember)
+      setToken(''); setPass('')
+      toast(res.created ? t('Vault created — this device pushed to cloud') : t('Unlocked — pulled the latest'))
+    } catch (e) { fail(e) }
+    setBusy(false)
+  }
+
+  const syncNow = async () => {
+    setBusy(true)
+    try { await pullState(); await pushState(); toast(t('Synced with the encrypted vault')) }
+    catch (e) { fail(e) }
+    setBusy(false)
+  }
+
+  const forget = () => {
+    lock()
+    toast(t('Locked — this device keeps its local data'))
+  }
+
+  return (
+    <Section title={t('Encrypted sync')}
+      footer={t('End-to-end encrypted: the passphrase never leaves this device, and the cloud only stores ciphertext. No server, no database.')}>
+      {vaultUser ? <>
+        <Row icon="lock" iconTint="var(--acc)" title={t('Connected as {0}', vaultUser)}
+          subtitle={t('Unlocked — your training syncs across every instance of the app.')} />
+        <Row icon="shuffle" iconTint="var(--blue)" title={t('Sync now')}
+          subtitle={t('Pull latest, then push this device.')} accessory="chevron" onClick={syncNow} />
+        <Row icon="signOut" iconTint="var(--red)" title={t('Lock & forget this device')}
+          subtitle={t('Stops syncing here; your data stays on this device.')} danger onClick={forget} />
+      </> : <>
+        <div className="muted small" style={{ marginBottom: 10 }}>
+          {vaultOn
+            ? t('Enter your passphrase to unlock the encrypted copy.')
+            : t('Sign in with a GitHub token and a passphrase. The first sync creates an encrypted vault; the same pair on another device pulls it back.')}
+        </div>
+        {!vaultOn && <>
+          <TextField value={token} onChange={e => setToken(e.target.value)} placeholder={t('GitHub token')}
+            autoCapitalize="none" autoCorrect="off" maxLength={200} type="password" />
+          <div style={{ height: 8 }} />
+        </>}
+        <TextField value={pass} onChange={e => setPass(e.target.value)} placeholder={t('Passphrase')}
+          autoCapitalize="none" autoCorrect="off" maxLength={200} type="password" />
+        {!vaultOn && <Row icon="key" iconTint="var(--indigo)" title={t('Remember on this device')}
+          subtitle={t('Stores the passphrase in this browser — no worse than the plaintext training data already here.')}>
+          <Switch checked={remember} onChange={setRemember} />
+        </Row>}
+        {err && <div className="small" style={{ color: 'var(--red)', marginTop: 8 }}>{err}</div>}
+        <div style={{ height: 10 }} />
+        <Button variant="primary" disabled={busy} onClick={submit}>{t('Unlock & sync')}</Button>
+        {!vaultOn && <div className="small" style={{ marginTop: 10 }}>
+          <a href="https://github.com/settings/tokens/new?scopes=gist&description=openGym%20vault" target="_blank" rel="noopener noreferrer">{t('Create a token with the gist scope')}</a>
+          <div className="dim" style={{ marginTop: 4 }}>{t('The token only needs the gist scope. It is stored in this browser; revoke it on GitHub anytime.')}</div>
+        </div>}
+        {vaultOn && <Row icon="signOut" iconTint="var(--red)" title={t('Lock & forget this device')}
+          subtitle={t('Removes the token from this browser; your data stays on this device.')} danger onClick={forget} />}
+      </>}
+    </Section>
+  )
 }
 
 // Optional multi-device sync. Only rendered when VITE_SUPABASE_* is configured; otherwise

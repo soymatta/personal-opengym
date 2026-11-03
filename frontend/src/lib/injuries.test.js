@@ -10,6 +10,7 @@ const LEG_CURL = '0586'       // lever lying leg curl
 const CALF_RAISE = '0605'     // lever standing calf raise
 const BENCH = '0025'          // barbell bench press
 const ROW = '0027'            // barbell bent over row
+const PULLDOWN = '2330'       // cable lat pulldown, full range of motion
 const DEADLIFT = '0085'       // barbell romanian deadlift
 
 describe('injuries', () => {
@@ -24,6 +25,14 @@ describe('injuries', () => {
     expect(riskFor(CALF_RAISE, ['knee'])).toEqual([])
     expect(riskFor(BENCH, ['knee'])).toEqual([])
     expect(riskFor(ROW, ['knee'])).toEqual([])
+  })
+
+  it('catches a shoulder injury through both spellings the dataset uses', () => {
+    // `tg` says "delts"/"lats", `sm` says "shoulders" on a bench press and "rear deltoids" on a
+    // pulldown — a press and a pull, both warn with the same joint.
+    expect(riskFor(BENCH, ['shoulder']).map(r => r.joint)).toEqual(['shoulder'])
+    expect(riskFor(PULLDOWN, ['shoulder']).map(r => r.joint)).toEqual(['shoulder'])
+    expect(riskFor(CALF_RAISE, ['shoulder'])).toEqual([])
   })
 
   it('warns about an injured knee for the movements that load it', () => {

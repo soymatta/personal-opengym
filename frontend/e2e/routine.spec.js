@@ -105,3 +105,46 @@ test('the whole-plan export names the plan it contains', async ({ page }) => {
   expect(doc.name).toBe('My plan')
   expect(doc.week).toEqual({ 1: 'r1' })
 })
+
+const plan = {
+  unit: 'kg', lang: 'en', restSec: 90, customEx: [], workouts: [], bodyweight: [],
+  routines: [{ id: 'r1', name: 'Push', emoji: '1f3cb', ex: [{ id: '0025', sets: 3, reps: 8, weight: 60 }] }],
+  week: {}, dayPlan: {},
+}
+
+test('a routine exercise can be swapped for an equivalent without losing the prescription', async ({ page }) => {
+  await load(page, plan)
+  await page.goto('/#/plan/r/r1')
+
+  await page.locator('.list .item').first().click()
+  await page.getByRole('button', { name: 'Replace exercise' }).click()
+  await expect(page.getByRole('heading', { name: 'Replace Barbell bench press' })).toBeVisible()
+
+  await page.locator('.sheet .item').filter({ hasText: 'Dumbbell bench press' }).first().click()
+
+  await expect(page.locator('.list .item').first()).toContainText('Dumbbell bench press')
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('gym_state_v1')))
+  // Sets and reps survive the swap; the load does not — 60 kg on a barbell bench says nothing
+  // about what you can dumbbell press.
+  expect(stored.routines[0].ex[0]).toMatchObject({ id: '0289', sets: 3, reps: 8, weight: 0, mode: 'reps' })
+})
+
+test('the exercise library offers replacements too', async ({ page }) => {
+  await load(page, plan)
+  await page.goto('/#/library')
+  await page.getByPlaceholder('Search…').fill('barbell bench press')
+  await page.locator('.item').filter({ hasText: 'Barbell bench press' }).first().click()
+
+  await page.getByRole('button', { name: 'Find a replacement' }).click()
+  await expect(page.getByRole('heading', { name: 'Replace Barbell bench press' })).toBeVisible()
+
+  const sheet = page.locator('.sheet')
+  expect(await sheet.locator('.item').count()).toBeGreaterThan(2)
+  // Never a different lift wearing the same muscle's name.
+  await expect(sheet).not.toContainText('Barbell deadlift')
+
+  // From the library a pick browses rather than replaces: the candidate's own detail opens.
+  const first = await sheet.locator('.item .tt').first().innerText()
+  await sheet.locator('.item').first().click()
+  await expect(page.getByRole('heading', { name: first })).toBeVisible()
+})

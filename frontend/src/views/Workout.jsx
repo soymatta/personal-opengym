@@ -54,6 +54,9 @@ function Elapsed({ start }) {
 }
 
 /* ---------- one exercise block (reps: weight×reps · time: a held duration · cardio: duration+speed) ---------- */
+// A set row names its fields short (w / r / sec); the progression plan and the routine config
+// name the same numbers long (weight / reps / sec).
+const PLAN_FIELD = { w: 'weight', r: 'reps', sec: 'sec' }
 function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemoveSet, onStartTimed }) {
   const S = useStore(s => s.S)
   const working = useUI(s => s.work)
@@ -89,21 +92,45 @@ function ExerciseBlock({ entryIdx, compact, onToggle, onField, onAddSet, onRemov
   const col3 = mode === 'reps' && eff ? { ...eff, eff: kind, dec: true, opt: true, hd: t(eff.hd) } : null
   // The effort column walks its own scale — see stepEffort. Weight and reps step up from 0
   // with no ceiling, as they always did.
+  // An empty cell suggests a number instead of showing a bare 0. The honest answer to "what
+  // should I do this set?" is what you just did for the same field one row up — it keeps the
+  // load you actually put on the bar and the reps you actually managed, which is what a repeat
+  // set is. Before anything is typed the plan's own number shows instead, so the row still says
+  // what the policy decided. A percentage wave needs none of this: it writes a different weight
+  // into every set as the session is built, and the placeholder never appears.
+  const filled = (v, col) => (col.opt ? v != null : (v || 0) > 0)
+  const suggest = (s, i, col) => {
+    if (s.done || filled(s[col.f], col)) return null
+    for (let j = i - 1; j >= 0; j--) if (filled(entry.sets[j][col.f], col)) return entry.sets[j][col.f]
+    // the plan and the routine config name their fields long (weight / reps / sec), the row
+    // short (w / r / sec) — one map keeps the two from drifting
+    const k = PLAN_FIELD[col.f]
+    if (k && plan && (plan[k] || 0) > 0) return plan[k]
+    const t = (entry.target || {})[col.f] ?? (k ? (entry.target || {})[k] : null)
+    return (t || 0) > 0 ? t : null
+  }
   const bump = (s, i, col, dir) => {
     if (col.eff) return onField(i, col.f, stepEffort(col.eff, s[col.f], dir))
-    onField(i, col.f, Math.max(0, Math.round(((s[col.f] || 0) + dir * col.step) * 100) / 100))
+    // stepping starts from the suggestion, so "+" means "the number on screen, plus a step"
+    // rather than "one step off zero" — the placeholder is where you begin, not a decoration
+    const from = (s[col.f] || 0) || (suggest(s, i, col) || 0)
+    onField(i, col.f, Math.max(0, Math.round((from + dir * col.step) * 100) / 100))
   }
   // Uses the shared stepper markup so a set row picks up the same control styling
   // as every other +/- field in the app.
-  const cell = (s, i, col, cls) => (
-    <div className={'stp ' + cls}>
-      <button aria-label="Decrease" onClick={() => bump(s, i, col, -1)}><Icon name="minus" /></button>
-      {/* a typed effort is capped — there is no RPE 12, and 12 reps in reserve is a warm-up */}
-      <span className="val"><NumberField decimal={col.dec} nullable={col.opt} value={s[col.f] ?? ''}
-        onChange={v => onField(i, col.f, col.eff ? capEffort(col.eff, v) : v)} /></span>
-      <button aria-label="Increase" onClick={() => bump(s, i, col, 1)}><Icon name="plus" /></button>
-    </div>
-  )
+  const cell = (s, i, col, cls) => {
+    const sug = suggest(s, i, col)
+    return (
+      <div className={'stp ' + cls}>
+        <button aria-label="Decrease" onClick={() => bump(s, i, col, -1)}><Icon name="minus" /></button>
+        {/* a typed effort is capped — there is no RPE 12, and 12 reps in reserve is a warm-up */}
+        <span className="val"><NumberField decimal={col.dec} nullable={col.opt}
+          value={sug == null ? (s[col.f] ?? '') : ''} placeholder={sug == null ? undefined : String(sug)}
+          onChange={v => onField(i, col.f, col.eff ? capEffort(col.eff, v) : v)} /></span>
+        <button aria-label="Increase" onClick={() => bump(s, i, col, 1)}><Icon name="plus" /></button>
+      </div>
+    )
+  }
   return <>
     <Media ex={ex} key={entry.id} compact={compact} minimizable />
     <div className="row between" style={{ marginBottom: 6 }}>
@@ -176,6 +203,9 @@ function ActiveWorkout() {
 
   const total = A.entries.reduce((n, e) => n + e.sets.length, 0)
   const done = setsDoneActive(A)
+  // The routine's effort target, shown once per session rather than under every exercise: it is
+  // one number for the whole workout, and repeating it six times turns a hint into wallpaper.
+  const rirTarget = A.entries.find(e => e.rir != null)?.rir
 
   const mutEntry = (idx, fn) => update(s => { fn(s.active.entries[idx]) }, true)
   // Clearing an optional field drops the key rather than storing null, so a set only carries
@@ -239,6 +269,15 @@ function ActiveWorkout() {
       <button className="iconbtn" style={{ color: 'var(--acc)' }} aria-label={t('Finish')} onClick={finishWorkout}><Icon name="check" /></button>
     </div>
     <div className="wprog"><i style={{ transform: 'scaleX(' + (total ? done / total : 0) + ')' }} /></div>
+
+    {rirTarget != null && <div className="progline" style={{ marginTop: 8 }}>
+      <Icon name="target" />
+      {/* 0 is the one value the "leave N in reserve" sentence cannot express — "leave 0" reads
+          like a typo, and RIR 0 is a different instruction, not a smaller number of the same one. */}
+      <span>{rirTarget === 0
+        ? t('Every working set goes to failure this session.')
+        : t('Leave about {0} in reserve this session.', rirTarget)}</span>
+    </div>}
 
     {A.entries.length ? <>
       <div className="muted small" style={{ marginBottom: 6 }}>{isSuperset ? t('Superset {0} / {1}', unitIdx + 1, units.length) : t('Exercise {0} / {1}', unitIdx + 1, units.length)}</div>

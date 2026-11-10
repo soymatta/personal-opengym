@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Weekly weigh-in, retuned progression, and guided stretching
+
+- ⚖️ **The weigh-in is weekly now, not per workout.** Starting a session only asks for
+  your body weight when the last entry is older than 7 days (rolling window) — otherwise
+  it skips the gate silently and starts with the recent weight.
+- 📈 **Double progression retuned to 8–12 across the plan.** Every rep-mode exercise now
+  prescribes 12 reps from a floor of 8 at the last session's top working weight, so the
+  engine holds, raises, or deloads from an honest number. The three swapped machine
+  presses start from their predecessors' weights where history exists, and from zero
+  otherwise — nothing is invented.
+- 🧘 **A guided stretching session from Home.** Pick bands or bodyweight and upper /
+  lower / full body; the app builds 6–8 timed 30-second holds and runs them on the
+  normal workout engine (work timer, rest timer, history), without touching your
+  routines.
+
 ### English + Spanish only, onboarding survey, and a 5-day plan
 
 - 🌍 **The app is English + Spanish now.** DE, FR, HI, IT, PT and ZH are gone from the tree —

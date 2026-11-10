@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, exLine, workoutVolume, effortOf, stepEffort, capEffort } from './history.js'
+import { modeOf, isTimed, fmtSec, setLabel, defaultConfig, buildSets, exLine, workoutVolume, effortOf, stepEffort, capEffort, needsWeighIn } from './history.js'
+import { isoOf } from './format.js'
 import { EXDB } from './exercises.js'
 
 // Real ids out of the shipped catalogue, so the body-part fallback is exercised for real.
@@ -306,6 +307,38 @@ describe('buildSets', () => {
   it('still prefers the confirmed working weight for reps sets', () => {
     const S = { exWeights: { [LIFT]: { w: 75 } }, workouts: [{ d: '2026-01-01', entries: [{ id: LIFT, sets: [{ w: 60, r: 10, done: true }] }] }] }
     expect(buildSets(S, { id: LIFT, sets: 1, reps: 8, weight: 50 })).toEqual([{ w: 75, r: 10, done: false }])
+  })
+})
+
+describe('needsWeighIn', () => {
+  // Dates relative to today, the way the rolling window is read — immune to when the suite runs.
+  const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return isoOf(d) }
+  const S = (...dates) => ({ bodyweight: dates.map(d => ({ d, w: 70 })) })
+
+  it('asks when there is no entry at all', () => {
+    expect(needsWeighIn({ bodyweight: [] })).toBe(true)
+    expect(needsWeighIn({})).toBe(true)
+  })
+
+  it('skips when today was already weighed in', () => {
+    expect(needsWeighIn(S(daysAgo(0)))).toBe(false)
+  })
+
+  it('skips on an entry 3 days ago, inside the rolling week', () => {
+    expect(needsWeighIn(S(daysAgo(3)))).toBe(false)
+  })
+
+  it('skips on the boundary — exactly 7 days ago still counts as this week', () => {
+    expect(needsWeighIn(S(daysAgo(7)))).toBe(false)
+  })
+
+  it('asks on an entry 8 days ago, outside the rolling week', () => {
+    expect(needsWeighIn(S(daysAgo(8)))).toBe(true)
+  })
+
+  it('reads the latest entry, not the first', () => {
+    expect(needsWeighIn(S(daysAgo(30), daysAgo(2)))).toBe(false)
+    expect(needsWeighIn(S(daysAgo(30), daysAgo(9)))).toBe(true)
   })
 })
 

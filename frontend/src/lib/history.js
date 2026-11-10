@@ -185,6 +185,18 @@ export function setsDoneActive(A) {
 }
 export const lastBW = S => (S.bodyweight.length ? S.bodyweight[S.bodyweight.length - 1] : null)
 
+// Weekly weigh-in gate (rolling 7-day window): the pre-workout check-in only asks when the
+// last entry is older than 7 days, so someone who weighs in regularly starts training
+// straight away. `iso` defaults to today; the bodyweight log is stored oldest-first.
+export function needsWeighIn(S, iso) {
+  const day = iso || todayISO()
+  const bw = S.bodyweight || []
+  if (!bw.length) return true
+  const t = new Date(day + 'T12:00:00')
+  t.setDate(t.getDate() - 7)
+  return bw[bw.length - 1].d < isoOf(t)
+}
+
 // Group consecutive items sharing a superset id (sg) into "units" of indices.
 // items may be routine exercises ({sg}) or active-workout entries ({sg}).
 export function supersetUnits(items) {

@@ -159,3 +159,34 @@ test('the rest timer can be switched off entirely', async ({ page }) => {
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('gym_state_v1')))
   expect(stored.restSec).toBe(0)
 })
+
+test('a stretching session starts from Home and opens its first hold', async ({ page }) => {
+  // A weigh-in today skips the pre-workout gate, so the sheet leads straight in.
+  const d = new Date()
+  const today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+  await page.addInitScript(s => { try { localStorage.setItem('gym_state_v1', JSON.stringify(s)) } catch { /* */ } }, {
+    unit: 'kg', lang: 'en', restSec: 0, surveyDone: true,
+    routines: [], week: {}, dayPlan: {}, customEx: [], workouts: [],
+    bodyweight: [{ d: today, w: 70, t: Date.now() }],
+    injuries: [], notes: {}, measures: [], exWeights: {}, active: null,
+  })
+  await page.goto('/#/home')
+  await page.getByRole('button', { name: 'Stretching session' }).click()
+  await expect(page.getByRole('heading', { name: 'Stretching session' })).toBeVisible()
+
+  // Defaults: no bands, full body. Starting needs no waiting — the first hold rendering
+  // proves the guided session was built on the workout engine.
+  await page.getByRole('button', { name: 'Start stretching' }).click()
+  await expect(page.locator('.setrow').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Start set' }).first()).toBeVisible()
+
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('gym_state_v1')))
+  expect(stored.active.name).toBe('Stretching')
+  expect(stored.active.routineId).toBeNull()
+  expect(stored.active.entries.length).toBeGreaterThanOrEqual(6)
+  expect(stored.active.entries.length).toBeLessThanOrEqual(8)
+  for (const e of stored.active.entries) {
+    expect(e.target.mode).toBe('time')
+    expect(e.target.sec).toBe(30)
+  }
+})

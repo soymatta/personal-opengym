@@ -97,7 +97,7 @@ test('a percentage wave drives the session weight, and the session explains wher
   // Sessions start from the Workout tab, which lists the routines that are not today's.
   await page.goto('/#/workout')
   await page.getByText('Wave').first().click()
-  // Every session opens with the weigh-in, which is skippable.
+  // With no recent weigh-in the session opens with the gate, which is skippable.
   await page.getByRole('button', { name: 'Start without weighing in' }).click()
 
   await expect(page.getByText(/90 % of your best estimated 1RM/)).toBeVisible()
@@ -107,6 +107,24 @@ test('a percentage wave drives the session weight, and the session explains wher
     return [n[0]?.value, n[1]?.value]
   }))
   expect(rows).toEqual([['80', '5'], ['90', '3'], ['100', '1']])
+})
+
+test('a weigh-in within the last 7 days skips the gate and starts the workout', async ({ page }) => {
+  // Local ISO like the app's own todayISO, so the seed lands on "today" in any timezone.
+  const d = new Date()
+  const today = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+  await load(page, {
+    routines: [{ id: 'r1', name: 'Wave', emoji: 'barbell', ex: [{ id: '0025', sets: 2, reps: 8, weight: 60 }] }],
+    bodyweight: [{ d: today, w: 70, t: Date.now() }],
+  })
+  await page.goto('/#/workout')
+  await page.getByText('Wave').first().click()
+  // No gate: straight into the session, carrying the recent weight.
+  await expect(page.getByRole('heading', { name: 'Quick check-in' })).toHaveCount(0)
+  await expect(page.locator('.setrow').first()).toBeVisible()
+  const stored = await state(page)
+  expect(stored.active.routineId).toBe('r1')
+  expect(stored.active.bw).toBe(70)
 })
 
 // The narrowest phone, in the translated language: new sheets with new long labels are exactly

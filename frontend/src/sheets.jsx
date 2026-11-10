@@ -3,7 +3,7 @@ import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { EXDB, EXIDX, BODYPARTS, isCardio, allExercises, equipmentOf, exName, exOr, matchesQuery } from './lib/exercises.js'
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
-import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf } from './lib/history.js'
+import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, needsWeighIn, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
@@ -25,6 +25,7 @@ import { pctSets, usesPct, WAVES, waveReps, trainingMax } from './lib/percent.js
 import { loadFor, barOf, BARS } from './lib/plates.js'
 import { equivalentsOf, searchExercises } from './lib/replacements.js'
 import { riskFor } from './lib/injuries.js'
+import { buildStretchSet } from './lib/stretch.js'
 import { SITES, siteKey, lenUnit, toLen, toCm, setMeasure } from './lib/measures.js'
 
 const S = () => useStore.getState().S
@@ -1165,11 +1166,17 @@ export function WorkoutRow({ w, onClick }) {
 
 /* ============================ workout lifecycle ============================ */
 export function startFlow(routineId) {
+  // Weekly weigh-in, not per-workout: a weigh-in within the last 7 days skips the gate
+  // silently and the session starts with that weight.
+  if (!needsWeighIn(S(), todayISO())) { beginWorkout(routineId, lastBW(S()).w); return }
   bwSheet({ required: true, onDone: bw => beginWorkout(routineId, bw) })
 }
 export function beginWorkout(routineId, bw) {
   const st = S()
-  const r = routineId ? st.routines.find(x => x.id === routineId) : null
+  // A guided session (stretching) passes its routine directly instead of an id: it is built
+  // exactly like any other session but never persisted into s.routines — freestyle-style.
+  const transient = routineId && typeof routineId === 'object'
+  const r = transient ? routineId : (routineId ? st.routines.find(x => x.id === routineId) : null)
   // The prescription is applied as the session is built, so you walk up to the bar with the
   // right weight already on the screen instead of being told about it afterwards. `plan` is
   // kept on the entry purely so the workout can explain the number it chose.
@@ -1196,7 +1203,7 @@ export function beginWorkout(routineId, bw) {
     return { id: cfg.id, sg: cfg.sg, ...(rir != null ? { rir } : {}), target: { ...cfg }, plan, sets: applyPrescription(buildSets(st, cfg), plan) }
   })
   update(s => {
-    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId, name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries }
+    s.active = { id: uid(), d: todayISO(), start: Date.now(), routineId: transient ? null : (routineId || null), name: r ? r.name : t('Freestyle'), bw: bw || null, cur: 0, entries }
   })
   useUI.getState().stopRest()
   nav('/workout')
@@ -1263,6 +1270,36 @@ function WorkoutComplete({ close }) {
   </div>
 }
 export const workoutCompleteSheet = () => ui().openSheet(close => <WorkoutComplete close={close} />, { kind: 'center' })
+
+/* ============================ guided stretching ============================ */
+// A 30-second-hold session picked from the stretch catalogue and run on the normal
+// workout engine: the work timer counts each hold, changeover uses the rest timer, and
+// it logs into history like any other session. The routine is transient — passed
+// straight to startFlow, never persisted into s.routines.
+function StretchSheet({ close }) {
+  const [bands, setBands] = useState('no')
+  const [type, setType] = useState('full')
+  const start = () => {
+    const holds = buildStretchSet(allExercises(S()), { bands: bands === 'yes', type })
+    close()
+    startFlow({ name: t('Stretching'), ex: holds })
+  }
+  return <>
+    <h3>{t('Stretching session')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Guided holds, 30 seconds each — pick your equipment and focus.')}</div>
+    <Section title={t('Resistance bands?')}>
+      <Segmented value={bands} onChange={setBands}
+        options={[{ value: 'yes', label: t('Yes') }, { value: 'no', label: t('No') }]} />
+    </Section>
+    <Section title={t('Focus')}>
+      <Segmented value={type} onChange={setType}
+        options={[{ value: 'upper', label: t('Upper body') }, { value: 'lower', label: t('Lower body') }, { value: 'full', label: t('Full body') }]} />
+    </Section>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" icon="stretch" onClick={start}>{t('Start stretching')}</Button>
+  </>
+}
+export const stretchSheet = () => ui().openSheet(close => <StretchSheet close={close} />)
 
 // How the session felt, in one tap (F9). Optional forever — it ships in the backup and in the
 // AI export, so it's there when you hand your history to a model. Stored on the finished workout

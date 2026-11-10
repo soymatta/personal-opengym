@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { PLAN_LIBRARY, planOf, planRoutines, applyPlan } from './plans.js'
+import { PLAN_LIBRARY, planOf, planRoutines, applyPlan, missingPlanCount } from './plans.js'
 import { EXIDX } from './exercises.js'
 
 // Opening a shelf item must not be able to produce a blank routine: an id that stops
@@ -142,5 +142,53 @@ describe('applyPlan', () => {
     const s = { week: {} }
     expect(applyPlan(s, plan)).toHaveLength(2)
     expect(s.routines).toHaveLength(2)
+  })
+
+  it('tags created routines with the plan key', () => {
+    const s = { routines: [], week: {} }
+    applyPlan(s, plan)
+    expect(s.routines.every(r => r.plan === plan.key)).toBe(true)
+  })
+
+  it('loading the same plan twice creates no duplicates and keeps the same ids', () => {
+    const s = { routines: [], week: {} }
+    const first = applyPlan(s, plan)
+    const second = applyPlan(s, plan)
+    expect(s.routines).toHaveLength(2)
+    expect(second.map(r => r.id)).toEqual(first.map(r => r.id))
+    expect(s.week).toEqual({ 1: first[0].id, 3: first[1].id, 5: first[0].id })
+  })
+
+  it('reuses untagged routines with the same name (created before tagging)', () => {
+    const s = { routines: [{ id: 'old-a', name: 'Full Body A', ex: [] }, { id: 'old-b', name: 'Full Body B', ex: [] }], week: {} }
+    applyPlan(s, plan)
+    expect(s.routines).toHaveLength(2)
+    expect(s.week[1]).toBe('old-a')
+  })
+
+  it('recreates only the routines the user deleted', () => {
+    const s = { routines: [], week: {} }
+    const [a] = applyPlan(s, plan)
+    s.routines = s.routines.filter(r => r.id === a.id)
+    applyPlan(s, plan)
+    expect(s.routines).toHaveLength(2)
+    expect(s.routines[0].id).toBe(a.id)
+  })
+
+  it('keeps user edits on a reused routine instead of overwriting them', () => {
+    const s = { routines: [], week: {} }
+    applyPlan(s, plan)
+    s.routines[0].ex.push({ id: '0025', sets: 9, reps: 9, weight: 99 })
+    applyPlan(s, plan)
+    expect(s.routines[0].ex).toHaveLength(6)
+  })
+
+  it('reports how many routines are still missing', () => {
+    const s = { routines: [], week: {} }
+    expect(missingPlanCount(s, plan)).toBe(2)
+    applyPlan(s, plan)
+    expect(missingPlanCount(s, plan)).toBe(0)
+    s.routines.pop()
+    expect(missingPlanCount(s, plan)).toBe(1)
   })
 })

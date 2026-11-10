@@ -112,27 +112,52 @@ export const planOf = key => PLAN_LIBRARY.find(p => p.key === key)
 
 /** Fresh routine objects for a plan — new ids, routine names in the current language. */
 export function planRoutines(plan) {
-  return plan.routines.map(r => ({
+  return plan.routines.map(r => makeRoutine(plan, r))
+}
+
+function makeRoutine(plan, r) {
+  return {
     id: uid(),
+    plan: plan.key,
     name: t(r.name),
     emoji: r.emoji,
     ...(r.prog ? { prog: r.prog } : {}),
     ...(r.rir != null ? { rir: r.rir } : {}),
     ex: r.ex.map(([id, sets, reps]) => ({ id, sets, reps, weight: 0 }))
-  }))
+  }
+}
+
+function findPlanRoutine(routines, plan, r, tagged) {
+  const name = t(r.name)
+  return routines.find(x => x.plan === plan.key && x.name === name)
+    || (!tagged && routines.find(x => !x.plan && x.name === name))
+}
+
+/** How many routines loading this plan would CREATE — the honest number for the confirm. */
+export function missingPlanCount(s, plan) {
+  const list = s.routines || []
+  const tagged = list.some(r => r.plan === plan.key)
+  return plan.routines.filter(r => !findPlanRoutine(list, plan, r, tagged)).length
 }
 
 /**
  * Load a plan into a draft state `s` (call inside store.update) and return the new routines.
  *
- * Routines are always ADDED — never overwritten — but the week IS replaced, for the same
- * reason mergePlan replaces it: a week that kept half the old days describes a schedule
- * neither the old plan nor the new one, and nothing on screen would say which is which.
+ * Idempotent: a routine the plan already created here (same `plan` key + name, or — for
+ * routines created before they were tagged — the same name) is reused, never duplicated.
+ * Only the missing ones are created, and the week is rebuilt to point at exactly one
+ * schedule: reloading a plan re-applies its week instead of cloning its routines.
  */
 export function applyPlan(s, plan) {
-  const routines = planRoutines(plan)
   s.routines = s.routines || []
-  s.routines.push(...routines)
+  const tagged = s.routines.some(r => r.plan === plan.key)
+  const routines = plan.routines.map(r => {
+    const found = findPlanRoutine(s.routines, plan, r, tagged)
+    if (found) return found
+    const fresh = makeRoutine(plan, r)
+    s.routines.push(fresh)
+    return fresh
+  })
   const week = {}
   Object.entries(plan.week).forEach(([d, i]) => { if (routines[i]) week[d] = routines[i].id })
   s.week = week

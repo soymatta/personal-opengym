@@ -7,7 +7,7 @@ import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolu
 import { beep, vibrate } from './lib/sound.js'
 import { t, instrFor, getLang, INSTR_LANGS } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
-import { planOf, applyPlan } from './lib/plans.js'
+import { planOf, applyPlan, missingPlanCount } from './lib/plans.js'
 import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
@@ -62,7 +62,7 @@ export function loadPlan(key) {
   if (!occupied) { run(); return }
   confirmSheet({
     title: t('Load “{0}”?', t(plan.name)),
-    message: t('Adds {0} routines and replaces your current weekly schedule. Nothing else is deleted.', plan.routines.length),
+    message: t('Adds {0} routines and replaces your current weekly schedule. Nothing else is deleted.', missingPlanCount(st, plan)),
     confirmText: t('Load'),
     onConfirm: run
   })

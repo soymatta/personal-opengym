@@ -1,21 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { SITES, siteKey, lenUnit, toLen, toCm, setMeasure, clearMeasure, latestOf, seriesOf, changeOf, sitesIn } from './measures.js'
-import de from '../locales/de.js'
 import es from '../locales/es.js'
-import fr from '../locales/fr.js'
-import hi from '../locales/hi.js'
-import itLocale from '../locales/it.js'
-import pt from '../locales/pt.js'
-import zh from '../locales/zh.js'
 
-// A measurement is not a body part and not a muscle, and some languages say the three with
-// different words. Each row is [idioma, sitio, lo que dice la cinta, la palabra que NO es] —
-// the bug this pins is the row that said "Rumpf" (torso) where the tape said Taille.
+// A measurement is not a body part and not a muscle, and Spanish says the three with
+// different words. Each row is [sitio, lo que dice la cinta, la palabra que NO es] —
+// the bug this pins is the row that once said "Rumpf" (torso) where the tape said Taille.
 const GIRTH_NOT_ANATOMY = [
-  ['de', 'waist', 'Taille', 'Rumpf'],        // grupo corporal del dataset
-  ['zh', 'waist', '腰围', '腰腹'],             // grupo corporal del dataset
-  ['fr', 'chest', 'Poitrine', 'Pectoraux'],  // chip muscular
-  ['zh', 'chest', '胸围', '胸部'],             // chip muscular
+  ['waist', 'Cintura', 'abdomen'],        // grupo corporal del dataset
 ]
 
 describe('units', () => {
@@ -129,29 +120,24 @@ describe('reading a series', () => {
 })
 
 describe('measurement labels', () => {
-  const LOCALES = { de, es, fr, hi, it: itLocale, pt, zh }
+  const dict = es.default || es
 
-  it('carries a label for every site in every language', () => {
-    for (const [lang, mod] of Object.entries(LOCALES)) {
-      const dict = mod.default || mod
-      for (const site of SITES) {
-        const key = siteKey(site)
-        expect(key, `${lang}: sitio ${site}`).toBeTruthy()
-        expect(dict[key], `${lang} ${key}`).toBeTruthy()
-      }
+  it('carries a label for every site in Spanish', () => {
+    for (const site of SITES) {
+      const key = siteKey(site)
+      expect(key, `sitio ${site}`).toBeTruthy()
+      expect(dict[key], key).toBeTruthy()
     }
   })
 
-  it('names the girth, not the muscle or the body part it sits in', () => {
-    for (const [lang, site, girth, anatomy] of GIRTH_NOT_ANATOMY) {
-      const dict = LOCALES[lang].default || LOCALES[lang]
-      expect(dict[siteKey(site)], `${lang} ${site}`).toBe(girth)
-      expect(dict[siteKey(site)], `${lang} ${site}`).not.toBe(anatomy)
+  it('names the girth, not the body part it sits in', () => {
+    for (const [site, girth, anatomy] of GIRTH_NOT_ANATOMY) {
+      expect(dict[siteKey(site)], site).toBe(girth)
+      expect(dict[siteKey(site)], site).not.toBe(anatomy)
     }
-    // Chest is spelled out because its short key would land on the muscle chip, so German — which
-    // needs a different word for each — reads "Brustumfang" on the tape and "Brust" on the muscle.
+    // Chest is spelled out because its short key would land on the muscle chip, so the tape
+    // reads its own label even where the language gives both the same word.
     expect(siteKey('chest')).not.toBe('Chest')
-    expect((de.default || de)[siteKey('chest')]).toBe('Brustumfang')
-    expect((de.default || de)['Chest']).toBe('Brust')
+    expect(dict[siteKey('chest')]).toBeTruthy()
   })
 })

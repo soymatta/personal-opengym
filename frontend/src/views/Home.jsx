@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore.js'
 import { effectiveRoutine, effectiveRoutineId, streakWeeks, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekKey, DAYS } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
-import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, bwDeltaColor } from '../sheets.jsx'
+import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, loadStarterPlan, surveySheet, bwDeltaColor } from '../sheets.jsx'
 import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
@@ -73,7 +73,19 @@ export default function Home() {
       </div>
     </div>
 
-    {!S.routines.length && !S.active && (
+    {!S.routines.length && !S.active && !S.surveyDone && (
+      <div className="card">
+        <div className="row" style={{ gap: 10, marginBottom: 6 }}>
+          <span className="lrow-i"><Icon name="sparkles" /></span>
+          <div className="big" style={{ fontSize: 22 }}>{t('Find your plan')}</div>
+        </div>
+        <div className="muted small" style={{ marginBottom: 12 }}>{t('New here? Answer 5 questions and we’ll suggest a plan.')}</div>
+        <Button variant="primary" icon="sparkles" onClick={surveySheet}>{t('Find my plan')}</Button>
+        <div style={{ height: 8 }} /><Button variant="ghost" className="dim" onClick={() => useStore.getState().update(s => { s.surveyDone = true })}>{t('Skip')}</Button>
+      </div>
+    )}
+
+    {!S.routines.length && !S.active && !!S.surveyDone && (
       <div className="card">
         <div className="row" style={{ gap: 10, marginBottom: 6 }}>
           <span className="lrow-i"><Icon name="sparkles" /></span>

@@ -42,8 +42,8 @@ test('switching language translates the rest-timer choices', async ({ page }) =>
 
 test('exercise names follow the language, and both languages stay searchable', async ({ page }) => {
   // Names come from the dataset, not from the locale files, so nothing in check-locales.mjs can
-  // catch them: only a screen can. Spanish is covered exercise by exercise, the rest of the
-  // languages fall back to the English name.
+  // catch them: only a screen can. Spanish is covered exercise by exercise; any
+  // non-Spanish UI falls back to the English name.
   await page.goto('/#/library')
   const search = page.getByPlaceholder('Search…')
 
@@ -65,25 +65,4 @@ test('exercise names follow the language, and both languages stay searchable', a
   await expect(page.getByText('Sentadilla completa con barra', { exact: true })).toBeVisible()
   // The English name must not still be on the row a Spanish user is reading.
   await expect(page.getByText('barbell full squat')).toHaveCount(0)
-})
-
-test('German and Chinese use their own vocabulary for routine, plan and rest', async ({ page }) => {
-  // The traps a key-set comparison cannot see: in German rest is a Pause, never a Ruhe, and in
-  // Chinese a routine is a 训练日 ("training day"), not a literal translation of the English word.
-  // A literal translation reads wrong even though every key is present.
-  await page.goto('/#/settings')
-  await pickLanguage(page, 'Deutsch')
-  await page.getByText('Pausen-Timer').click()
-  await expect(page.getByRole('button', { name: 'Keine Pause' })).toBeVisible()
-  await page.getByRole('button', { name: 'Keine Pause' }).click()
-
-  await page.goto('/#/plan')
-  await expect(page.getByRole('heading', { name: 'Fertige Pläne' })).toBeVisible()
-  await expect(page.getByText('Routinen', { exact: true })).toBeVisible()
-
-  await page.goto('/#/settings')
-  await pickLanguage(page, '中文', 'Sprache')
-  await page.goto('/#/plan')
-  await expect(page.getByRole('heading', { name: '现成计划' })).toBeVisible()
-  await expect(page.getByText('训练日', { exact: true })).toBeVisible()
 })

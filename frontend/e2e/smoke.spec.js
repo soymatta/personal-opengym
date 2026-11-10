@@ -68,8 +68,35 @@ test('the encrypted vault card offers a login without gating the app', async ({ 
   await expect(page.getByText('No account needed')).toBeVisible()
 })
 
+test('a fresh install shows the survey card until it is skipped', async ({ page }) => {
+  await page.goto('/#/home')
+  await expect(page.getByText('New here? Answer 5 questions and we’ll suggest a plan.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Find my plan' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Find my plan' }).click()
+  await expect(page.getByRole('heading', { name: 'Find your plan' })).toBeVisible()
+
+  // Skipping asks nothing and never asks again: surveyDone persists. A reload (not a
+  // hash-only goto, which would leave the sheet open) closes the sheet first.
+  await page.reload()
+  await page.getByRole('button', { name: 'Skip' }).click()
+  await expect(page.getByText('New here? Answer 5 questions and we’ll suggest a plan.')).toBeHidden()
+  await expect(page.getByText('Welcome!')).toBeVisible()
+
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('gym_state_v1')))
+  expect(stored.surveyDone).toBe(true)
+
+  // …and it stays gone when coming back: a hash-only navigation keeps the stored answer.
+  await page.locator('#tabbar').getByRole('button', { name: 'Plan' }).click()
+  await page.locator('#tabbar').getByRole('button', { name: 'Home' }).click()
+  await expect(page.getByText('Welcome!')).toBeVisible()
+  await expect(page.getByText('New here? Answer 5 questions and we’ll suggest a plan.')).toHaveCount(0)
+})
+
 test('a fresh install can load the starter plan', async ({ page }) => {
   await page.goto('/#/home')
+  // The survey comes first on a fresh install — skip it to reach the old welcome card.
+  await page.getByRole('button', { name: 'Skip' }).click()
   await expect(page.getByText('Welcome!')).toBeVisible()
 
   await page.getByRole('button', { name: /Load starter plan/ }).click()

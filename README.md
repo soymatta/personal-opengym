@@ -89,7 +89,7 @@ support, dark/light themes.
 - ✨ **Your own exercises** — a name and a body part is enough; they behave like built-in ones everywhere, with an optional description instead of an animation
 - 🟩 **Activity heatmap** — a GitHub-style year view, shaded by time spent training
 - 💪 **Muscle map** — a front-and-back body diagram shaded by how much work each muscle got, over a week, a month or all time. It names the muscles you *haven't* trained in that period, previews what a routine hits while you build it, and shows what you just trained when you finish. Male or female figure, your pick
-- 🌍 **8 languages** — full UI translation (EN, DE, ES, FR, IT, PT, ZH, HI); exercise instructions localized in 6 of them, loaded on demand so the app stays fast
+- 🌍 **English + Spanish** — full UI translation, Spanish exercise names and localized exercise instructions in Spanish, loaded on demand so the app stays fast
 - 📥 **Bring your history with you** — import from **FitNotes** (Android and iOS), **Strong** and **Hevy**, or body weight straight out of an **Apple Health** export. Exercise names are matched against the library and anything unrecognised becomes one of your own exercises, so nothing in the file is dropped
 - 🤖 **AI-friendly export** — no AI ships in the app, but your history does. Export everything (plan, schedule, every set) as one **JSON** document or as **NDJSON** — one set per line — and paste it into whatever model you use. Import it back losslessly. See **[AI export](#ai-friendly-export)**
 - 📦 **Yours to keep** — one-tap JSON export/import, local-only, **no telemetry**
@@ -196,14 +196,6 @@ npm run qa      # all three, in order
 - [x] More starter plans (upper/lower, full-body, 5×5)
 - [x] Body measurements (waist, arms…) alongside weight
 - [x] Per-exercise notes & plate calculator
-- [ ] Exercise instructions in German & Portuguese (UI is translated; upstream dataset doesn't ship these yet)
-
-The last one is blocked upstream, not here: the dataset has instructions in ten languages
-(EN, ES, FR, IT, PL, RU, TR, ZH, KO, HI) and **zero** in German or Portuguese, so both fall back
-to English with a note on the exercise. Filling it means either a second dataset with its own
-licence terms (RepDB ships German, attribution required, no redistribution) plus a name-matched
-mapping of 1,324 exercises — where a wrong match teaches the wrong movement — or a hand-written
-pack for the exercises the ready-made plans actually use.
 
 ## Contributing
 

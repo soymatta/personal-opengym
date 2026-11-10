@@ -5,13 +5,14 @@ import { EXDB, EXIDX, BODYPARTS, isCardio, allExercises, equipmentOf, exName, ex
 import { fmtDate, fmtNum, fmtVol, fmtDur, durPart, todayISO, uid, exCount, DAYN, MONTHS_LONG, ACCENTS } from './lib/format.js'
 import { lastEntryFor, bestWeightFor, buildSets, effectiveRoutineId, workoutVolume, setsDone, setsDoneActive, lastBW, supersetUnits, unitOf, setLabel, defaultConfig, cleanupSg, modeOf, effortOf } from './lib/history.js'
 import { beep, vibrate } from './lib/sound.js'
-import { t, instrFor, getLang, INSTR_LANGS } from './lib/i18n.js'
+import { t, instrFor } from './lib/i18n.js'
 import { nav } from './lib/nav.js'
 import { planOf, applyPlan, missingPlanCount } from './lib/plans.js'
+import { recommendPlan } from './lib/onboard.js'
 import Media, { Thumb } from './components/Media.jsx'
 import Stepper from './components/Stepper.jsx'
 import Icon from './components/Icon.jsx'
-import { Button, Slider, Switch, Segmented, SelectRow, TextArea, NumberField } from './components/ui.jsx'
+import { Button, Slider, Switch, Segmented, SelectRow, TextArea, NumberField, Section, Row } from './components/ui.jsx'
 import { glyphOf, GLYPH_GROUPS, DEFAULT_GLYPH } from './lib/glyphs.js'
 import BodyMap from './components/BodyMap.jsx'
 import { loadOfWorkouts, MUSCLE_NAME } from './lib/muscles.js'
@@ -147,6 +148,86 @@ export function bwSheet(opts = {}) {
   const h = ui().openSheet(close => <BwSheet {...opts} close={close} />, { locked: !!opts.required })
   return h
 }
+
+/* ============================ onboarding survey ============================ */
+// Five questions on first launch — weight, goal, experience, days, equipment — that end in a
+// recommended ready-made plan. The weight is logged like any other weigh-in (same shape as
+// bwSheet, same-day entries merged), the answers land on the profile, and surveyDone marks
+// the survey as asked — skipping sets it too, so it never nags.
+function Survey({ close }) {
+  const st = useStore(s => s.S)
+  const unit = st.unit
+  const bw = lastBW(st)
+  const [weight, setWeight] = useState(bw ? bw.w : 70)
+  const [goal, setGoal] = useState('hypertrophy')
+  const [experience, setExperience] = useState('beginner')
+  const [days, setDays] = useState(3)
+  const [equipment, setEquipment] = useState('full')
+  const [age, setAge] = useState(null)
+  const [rec, setRec] = useState(null)
+
+  if (rec) {
+    const plan = planOf(rec.key)
+    return <>
+      <h3>{t('Your plan: {0}', t(plan.name))}</h3>
+      <div className="muted small" style={{ marginBottom: 8, lineHeight: 1.5 }}>{t(rec.reasonKey)}</div>
+      <div className="small dim" style={{ marginBottom: 16, lineHeight: 1.5 }}>{t(plan.note)}</div>
+      <Button variant="primary" icon="sparkles" onClick={() => { close(); loadPlan(plan.key) }}>{t('Load plan')}</Button>
+      <div style={{ height: 8 }} />
+      <Button onClick={() => { close(); nav('/plan') }}>{t('See all plans')}</Button>
+    </>
+  }
+
+  const save = () => {
+    const w = Math.round((weight || 0) * 10) / 10
+    if (!w || w <= 0) { toast(t('Enter a valid weight')); return }
+    const r = recommendPlan({ days, goal, experience })
+    update(s => {
+      const iso = todayISO()
+      const ex = s.bodyweight.find(b => b.d === iso)
+      if (ex) { ex.w = w; ex.t = Date.now() } else s.bodyweight.push({ d: iso, w, t: Date.now() })
+      s.bodyweight.sort((a, b) => (a.d < b.d ? -1 : 1))
+      s.age = age; s.goal = goal; s.experience = experience; s.trainDays = days; s.equipment = equipment
+      s.surveyDone = true
+    })
+    setRec(r)
+  }
+
+  return <>
+    <h3>{t('Find your plan')}</h3>
+    <div className="muted small" style={{ marginBottom: 12 }}>{t('Answer 5 questions and we’ll suggest a plan to start with.')}</div>
+    <Section title={t('Weight ({0})', unit)}>
+      <WeightInput value={weight} setValue={setWeight} unit={unit} />
+    </Section>
+    <Section title={t('Goal')}>
+      <Segmented value={goal} onChange={setGoal}
+        options={[{ value: 'strength', label: t('Strength') }, { value: 'hypertrophy', label: t('Hypertrophy') }, { value: 'lose', label: t('Lose weight') }]} />
+    </Section>
+    <Section title={t('Experience')}>
+      <Segmented value={experience} onChange={setExperience}
+        options={[{ value: 'beginner', label: t('Beginner') }, { value: 'intermediate', label: t('Intermediate') }, { value: 'advanced', label: t('Advanced') }]} />
+    </Section>
+    <Section title={t('Days per week')}>
+      <div className="row between">
+        <span className="small muted">{t('How many days can you train?')}</span>
+        <Stepper value={days} step={1} decimal={false} onChange={v => setDays(Math.min(7, Math.max(1, Math.round(v) || 1)))} />
+      </div>
+    </Section>
+    <Section title={t('Equipment')}>
+      <Segmented value={equipment} onChange={setEquipment}
+        options={[{ value: 'full', label: t('Full gym') }, { value: 'home', label: t('At home') }]} />
+    </Section>
+    <Section title={t('Age')}>
+      <div className="row between">
+        <span className="small muted">{t('Optional — helps future recommendations.')}</span>
+        <NumberField nullable value={age} onChange={setAge} aria-label={t('Age')} placeholder="—" />
+      </div>
+    </Section>
+    <div style={{ height: 14 }} />
+    <Button variant="primary" icon="sparkles" onClick={save}>{t('Find my plan')}</Button>
+  </>
+}
+export const surveySheet = () => ui().openSheet(close => <Survey close={close} />)
 
 /* ============================ plate calculator ============================ */
 // What to hang on the bar. Comes up mid-workout, so it is one screen with no scrolling: the
@@ -459,7 +540,7 @@ function ExerciseDetail({ ex, close }) {
     </div>}
     {!isCardio(ex) && <OneRM ex={ex} />}
     <NoteBox exId={ex.id} />
-    {instrFor(ex).length > 0 &&<><h4 className="sec">{t('How to')}{!INSTR_LANGS.includes(getLang()) && <span className="dim" style={{ textTransform: 'none', letterSpacing: 0 }}> · {t('instructions in English')}</span>}</h4><ol className="steps-list">{instrFor(ex).map((s, i) => <li key={i}>{s}</li>)}</ol></>}
+    {instrFor(ex).length > 0 &&<><h4 className="sec">{t('How to')}</h4><ol className="steps-list">{instrFor(ex).map((s, i) => <li key={i}>{s}</li>)}</ol></>}
   </>
 }
 export const exerciseDetailSheet = ex => ui().openSheet(close => <ExerciseDetail ex={ex} close={close} />)

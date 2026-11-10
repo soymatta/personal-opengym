@@ -34,7 +34,11 @@ export const DEF = {
   notes: {},
   // measures: tape measurements, one entry per day, every site in centimetres (see lib/measures.js
   // for why the unit is not the profile's). Sits beside `bodyweight` — same idea, more sites.
-  measures: []
+  measures: [],
+  // onboarding survey (lib/onboard.js + surveySheet in sheets.jsx): what the user answered when
+  // asked how they train, so the app can recommend a plan. Flat scalars merge cleanly on load,
+  // so no loadState change is needed. surveyDone also covers "Skip" — asked once either way.
+  age: null, goal: null, experience: null, trainDays: null, equipment: 'full', surveyDone: false
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 

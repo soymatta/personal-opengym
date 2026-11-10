@@ -82,7 +82,7 @@ frontend/                 React 19 + Vite PWA (the whole app)
   src/views/              routed screens (Home, Plan, Workout, Stats, History, Library, Settings)
   src/components/         shared UI (ui.jsx primitives, charts, media, body map, icons)
   src/sheets.jsx          every modal sheet + the helpers that open them
-  src/locales/            de es fr hi it pt zh — English is the key, it has no file
+  src/locales/            es — English is the key, it has no file
   src/names/es.js         hand-written Spanish exercise names (+ es.test.js)
   src/instr/              generated per-language instruction packs (English lives inline)
   public/sw.js            service-worker runtime cache
@@ -93,9 +93,9 @@ supabase/schema.sql       table for optional cloud sync
 docs/SUPABASE_VERCEL.md   optional multi-device setup
 ```
 
-**Generated data, never hand-edited:** `src/lib/exercises-data.js` and `src/instr/*.js` (one pack
-per language, 6 of the 8 — `de` and `pt` have no upstream instructions and fall back to
-English). Regenerate with `node scripts/build-instructions.mjs` from the repo root.
+**Generated data, never hand-edited:** `src/lib/exercises-data.js` and `src/instr/es.js` (the
+Spanish instruction pack from the upstream dataset; English lives inline in the dataset itself).
+Regenerate with `node scripts/build-instructions.mjs` from the repo root.
 
 Two Vercel configs exist on purpose, and editing the wrong one does nothing: `frontend/vercel.json`
 (README's setup — project Root Directory `frontend`) and the root `vercel.json` (builds from the
@@ -104,20 +104,19 @@ first load (`src/lib/demoSeed.js`).
 
 ## Conventions
 
-- **Every string ships in every language.** The app speaks 8 languages and a user can switch
+- **Every string ships in every language.** The app speaks 2 languages (English + Spanish) and a user can switch
   at any moment, so English text reaching a translated UI is a bug, not a gap. When you add or
   change UI text — a label, a button, a toast, an option, a placeholder, a plan or routine name:
   1. English first (the source string is the key, `t('…')`, `{0}` placeholders).
-  2. Then all 7 locale files in `frontend/src/locales/` (`de es fr hi it pt zh`), in the
-     same commit. Append a new key with the same text in each file, next to the section it
+  2. Then the locale file in `frontend/src/locales/` (`es`), in
+     the same commit. Append a new key with the same text in each file, next to the section it
      belongs to.
   3. Verify with `npm run locales` (also part of `npm run qa`). It fails on a key missing from any
      locale AND on any `t('…')` literal no locale carries, so a string you forgot cannot pass.
      `check-locales.mjs --json` prints the exact missing keys; `--stale` lists keys nobody asks
      for by literal — **that is not a delete list** (computed keys land there too).
-  4. Match the existing vocabulary, don't invent a parallel one (`Rest` is `Pause` in German, a
-     routine is a `训练日` in Chinese, `Rotina` in Portuguese — never a literal translation of the
-     English word).
+  4. Match the existing vocabulary, don't invent a parallel one (a routine is a
+     `rutina` in Spanish — never a literal translation of the English word).
   5. **Data is text too.** Exercise body parts, equipment, targets, muscles, plan notes, routine
      names and weekdays all reach `t()` through a variable (`t(ex.eq)`, `t(plan.note)`), invisible
      to the literal scan. Renaming or adding one keeps `npm run locales` green while the UI drops

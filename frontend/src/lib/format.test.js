@@ -23,8 +23,8 @@ describe('fmtDur', () => {
   })
 
   it('translates the unit, not just the number', async () => {
-    await setLang('de')
-    expect(fmtDur(45 * 60000)).toBe('45 Min.')
-    expect(fmtDur(90 * 60000)).toBe('1 Std. 30 Min.')
+    await setLang('es')
+    expect(fmtDur(45 * 60000)).toBe('45 min')
+    expect(fmtDur(90 * 60000)).toBe('1 h 30 min')
   })
 })

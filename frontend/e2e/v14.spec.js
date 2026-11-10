@@ -109,9 +109,9 @@ test('a percentage wave drives the session weight, and the session explains wher
   expect(rows).toEqual([['80', '5'], ['90', '3'], ['100', '1']])
 })
 
-// The narrowest phone, in the wordiest language: new sheets with new long labels are exactly
+// The narrowest phone, in the translated language: new sheets with new long labels are exactly
 // where a translation overflows, and a gate on the locale files cannot see that — only pixels can.
-test.describe('on a 320px phone in German', () => {
+test.describe('on a 320px phone in Spanish', () => {
   test.use({ viewport: { width: 320, height: 640 } })
 
   // Anything visible whose box leaves the viewport, named, so a failure says what did it.
@@ -127,27 +127,27 @@ test.describe('on a 320px phone in German', () => {
       .map(el => `${(el.textContent || el.getAttribute('aria-label') || el.tagName).trim().slice(0, 30)} @ ${Math.round(el.getBoundingClientRect().right)}px`)
   })
 
-  test('the plate calculator holds up, and speaks German rather than English', async ({ page }) => {
-    await load(page, { lang: 'de', active: BENCH_SESSION })
+  test('the plate calculator holds up, and speaks Spanish rather than English', async ({ page }) => {
+    await load(page, { lang: 'es', active: BENCH_SESSION })
     await page.goto('/#/workout')
 
-    await page.getByRole('button', { name: 'Hantelscheiben-Rechner' }).click()
-    await expect(page.getByRole('heading', { name: 'Hantelscheiben-Rechner' })).toBeVisible()
-    await expect(page.getByText('Auf der Stange')).toBeVisible()
+    await page.getByRole('button', { name: 'Calculadora de discos' }).click()
+    await expect(page.getByRole('heading', { name: 'Calculadora de discos' })).toBeVisible()
+    await expect(page.getByText('En la barra')).toBeVisible()
     await expect(page.getByText('On the bar')).toHaveCount(0)
     expect(await strays(page)).toEqual([])
   })
 
-  test('the measurement sheet holds up, and speaks German rather than English', async ({ page }) => {
+  test('the measurement sheet holds up, and speaks Spanish rather than English', async ({ page }) => {
     // A fresh page, not a hash change: a hash-only goto is a same-document navigation, so an open
     // sheet stays open and swallows the next click.
-    await load(page, { lang: 'de' })
+    await load(page, { lang: 'es' })
     await page.goto('/#/stats')
 
-    await expect(page.getByRole('heading', { name: 'Maße' })).toBeVisible()
-    await page.getByRole('button', { name: 'Eintragen' }).last().click()
-    await expect(page.getByRole('heading', { name: 'Körpermaße' })).toBeVisible()
-    await expect(page.getByLabel('Taille')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Medidas' })).toBeVisible()
+    await page.getByRole('button', { name: 'Registrar' }).last().click()
+    await expect(page.getByRole('heading', { name: 'Medidas corporales' })).toBeVisible()
+    await expect(page.getByLabel('Cintura')).toBeVisible()
     await expect(page.getByText('Body measurements')).toHaveCount(0)
     expect(await strays(page)).toEqual([])
   })

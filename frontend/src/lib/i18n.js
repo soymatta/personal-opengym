@@ -5,15 +5,15 @@
 // language, from the upstream dataset) — also lazy-loaded on language switch.
 import { useSyncExternalStore } from 'react'
 
-// UI languages. de/pt have no instruction pack upstream — instructions fall back to English.
+// UI languages: English plus Spanish. Every other language was dropped — the app ships
+// only what it fully translates, and Spanish is the one with hand-written exercise names
+// and a generated instruction pack, so both stay complete.
 export const LANGS = {
-  en: 'English', de: 'Deutsch', es: 'Español', fr: 'Français', it: 'Italiano',
-  pt: 'Português', zh: '中文', hi: 'हिन्दी'
+  en: 'English', es: 'Español'
 }
-export const INSTR_LANGS = ['en', 'es', 'fr', 'it', 'zh', 'hi']
+export const INSTR_LANGS = ['en', 'es']
 const DATE_LOCALES = {
-  en: 'en-GB', de: 'de-DE', es: 'es-ES', fr: 'fr-FR', it: 'it-IT', pt: 'pt-PT',
-  zh: 'zh-CN', hi: 'hi-IN'
+  en: 'en-GB', es: 'es-ES'
 }
 
 const localePacks = import.meta.glob('../locales/*.js')

@@ -6,14 +6,14 @@
 //     English silently, mid-sentence, with nothing failing anywhere.
 //  2. Every string a component passes to t('…') is carried by every locale. Locale parity
 //     alone cannot see this one: a brand-new t('…') literal that no locale has yet is missing
-//     from all eleven at once, which looks exactly like being in sync.
+//     from every locale at once, which looks exactly like being in sync.
 //
 //   node scripts/check-locales.mjs
 //   node scripts/check-locales.mjs --json    # exact text of every untranslated literal
 //   node scripts/check-locales.mjs --stale   # exact text of every key no component asks for
 //
 // The reference for (1) is the union of all locales, not one blessed file: a key added to a
-// single locale then flags the other ten instead of passing unnoticed.
+// single locale then flags the others instead of passing unnoticed.
 //
 // (2) is only as good as its scanner, so the scanner is self-checked at startup against the
 // shapes that have fooled it: a quote inside a regex literal (`.replace(/"/g, …)` desynchronised
@@ -53,15 +53,18 @@ for (const file of files) {
 }
 
 // How many locales carry each key — 1 means the key was added to a single file only,
-// which is the usual shape of the bug and worth naming separately from plain gaps.
+// which is the usual shape of the bug and worth naming separately from plain gaps. With a
+// single locale there is nothing to compare against, so every key is trivially unique and
+// the orphan check is skipped: the literal scan below is the gate that matters then.
 const seen = new Map()
 for (const keys of locales.values()) for (const k of keys) seen.set(k, (seen.get(k) || 0) + 1)
 const union = [...seen.keys()]
+const multi = locales.size > 1
 
 let failed = false
 for (const [lang, keys] of locales) {
   const missing = union.filter(k => !keys.has(k))
-  const orphans = union.filter(k => keys.has(k) && seen.get(k) === 1)
+  const orphans = multi ? union.filter(k => keys.has(k) && seen.get(k) === 1) : []
   if (missing.length || orphans.length) {
     failed = true
     console.error(`\n${lang}.js: ${keys.size}/${union.length} keys`)
@@ -329,7 +332,7 @@ console.log(`${locales.size} locales, ${union.length} keys each — in sync.`)
 console.log(`${used.size} t('…') literals in src/ — all translated${allowed.length ? `, ${allowed.length} allowed English-only` : ''}.`)
 
 // The other direction, as a warning rather than a failure: a key every locale carries while no
-// component asks for it is dead weight in 11 files at once. It is not a bug — nothing breaks, the
+// component asks for it is dead weight in every locale file at once. It is not a bug — nothing breaks, the
 // string is simply never rendered — so it must not fail a run or block a commit. What it must not
 // be either is invisible: features get removed (the AI coach, the passkey login, push reminders)
 // and their translations stay behind, in every language, forever.

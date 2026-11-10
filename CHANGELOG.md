@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### English + Spanish only, onboarding survey, and a 5-day plan
+
+- 🌍 **The app is English + Spanish now.** DE, FR, HI, IT, PT and ZH are gone from the tree —
+  UI strings, instruction packs, tests and docs — so every screen is fully translated instead
+  of mostly translated. Spanish keeps its hand-written exercise names and its instruction pack;
+  anything not in Spanish falls back to English.
+- 👋 **An onboarding survey on first launch.** Five questions — weight, goal, experience, days
+  per week, equipment — recommend one of the ready-made plans with a sentence on why it fits,
+  load it in one tap, or browse all plans instead. Skippable, and it never shows again once
+  answered or skipped.
+- 🏋️ **A 5-day hypertrophy plan in the library: PPL + Upper / Lower.** Push · Pull · Legs ·
+  Upper · Lower, Monday to Friday, every muscle twice a week on double progression — hold the
+  load until every set hits the top of the range, then add weight. Built from the same exercise
+  lists as the existing Push/Pull/Legs and Upper/Lower plans.
+- 🧾 **The plan notes say what the plan is now.** Each ready-made plan explains who it is for,
+  how many days a week it takes, what to expect and how it progresses — readable on the card,
+  in both languages.
+
 ### A plate calculator, percentage waves, and a note per lift
 
 Four things you reach for in the middle of a session: how much is on the bar, what today's

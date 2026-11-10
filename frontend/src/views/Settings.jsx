@@ -5,7 +5,7 @@ import { useUI } from '../store/useUI.js'
 import { ACCENTS, todayISO } from '../lib/format.js'
 import { effortOf } from '../lib/history.js'
 import { wakeLockSupported } from '../lib/wakelock.js'
-import { t, LANGS, INSTR_LANGS } from '../lib/i18n.js'
+import { t, LANGS } from '../lib/i18n.js'
 import { DEMO, REPO } from '../lib/demo.js'
 import { IS_ANDROID } from '../lib/platform.js'
 import { downloadFile } from '../lib/history-export.js'
@@ -96,7 +96,6 @@ export default function Settings() {
         value={S.lang || 'en'} onChange={v => update(s => { s.lang = v })}
         options={Object.entries(LANGS).map(([k, name]) => ({
           value: k, label: name,
-          subtitle: INSTR_LANGS.includes(k) ? null : t("Exercise instructions aren't available in this language yet — they stay in English."),
         }))}
       />
       <Row icon="scale" iconTint="var(--teal)" title={t('Weight unit')}>

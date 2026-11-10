@@ -39,7 +39,7 @@ export const PLAN_LIBRARY = [
     key: 'fullbody',
     icon: 'figureStrength',
     name: 'Full Body · 3 days',
-    note: 'Mon / Wed / Fri, alternating A and B. Every muscle three times a week — the most forgiving plan if you miss a day.',
+    note: 'For beginners, 3 days a week (Mon/Wed/Fri, alternating A and B). Trains every muscle three times a week with Greyskull progression — miss a day and everything still got trained twice.',
     routines: [
       // Greyskull's rule (two straight sets plus a final set to failure) is what this split
       // was designed around: heavy full-body lifting three times a week needs a saner
@@ -55,7 +55,7 @@ export const PLAN_LIBRARY = [
     key: 'upperlower',
     icon: 'pullup',
     name: 'Upper / Lower',
-    note: 'Mon Upper · Tue Lower · Thu Upper · Fri Lower. Each muscle twice a week, in four sessions of about an hour.',
+    note: 'For intermediates with 4 days a week (Mon/Tue/Thu/Fri). Trains every muscle twice a week in ~1-hour sessions with double progression — add weight once every set hits the top of the range.',
     routines: [
       // "double" turns each exercise into a rep range: `reps` is the top of the range and the
       // policy walks up to it before adding weight (bottom defaults to reps − 2).
@@ -69,7 +69,7 @@ export const PLAN_LIBRARY = [
     key: 'ppl',
     icon: 'dumbbell',
     name: 'Push / Pull / Legs',
-    note: 'Mon Push · Wed Pull · Fri Legs. Six exercises a session — the plan Personal Open Gym has always shipped.',
+    note: 'For 3 days a week with longer sessions (Mon/Wed/Fri). One movement pattern per day with double progression — each muscle is trained once a week, so pick Upper / Lower if you have a fourth day.',
     // Two changes from the fitness-coach audit, both in the data rather than the prose:
     //   · `prog: 'double'`. Load progression and rep progression produce similar hypertrophy and
     //     strength once volume-load is matched (Plotkin et al. 2022, PeerJ,
@@ -96,7 +96,7 @@ export const PLAN_LIBRARY = [
     key: 'strong5x5',
     icon: 'barbell',
     name: '5×5 · A / B',
-    note: 'Squat every session. Mon + Fri: bench press and row, 5×5. Wed: overhead press 5×5 and a single heavy set of five deadlifts.',
+    note: 'For beginners who want pure barbell strength, 3 days a week. Squat every session and add weight each time — bench and row on Mon/Fri, overhead press plus one heavy deadlift set on Wed.',
     routines: [
       // Novices running a load-driven linear program stop with more in the tank: the bar is the
       // limit on the next session anyway, and grinding 5×5 to failure costs more recovery than it
@@ -105,6 +105,23 @@ export const PLAN_LIBRARY = [
       { name: '5×5 B', emoji: 'barbell', rir: 3, ex: [['0043', 5, 5], ['0091', 5, 5], ['0032', 1, 5]] }
     ],
     week: { 1: 0, 3: 1, 5: 0 }
+  },
+  {
+    // Five days, one pattern a day: the PPL three plus a dedicated upper and lower day, so
+    // every muscle is trained twice a week. The exercise triples are copied verbatim from the
+    // plans above, which the dataset-id test below pins in place.
+    key: 'pplul',
+    icon: 'dumbbell',
+    name: 'PPL + Upper / Lower',
+    note: 'Monday to Friday hypertrophy: Push · Pull · Legs · Upper · Lower. Every muscle twice a week with double progression — hold the load until every set hits the top of the range, then add weight.',
+    routines: [
+      { name: 'Push', emoji: 'barbell', prog: 'double', rir: 2, ex: [['0025', 4, 8], ['0047', 3, 10], ['0426', 3, 10], ['0334', 3, 12], ['0241', 3, 12], ['0251', 3, 10]] },
+      { name: 'Pull', emoji: 'pullup', prog: 'double', rir: 2, ex: [['2330', 4, 10], ['0027', 4, 8], ['1323', 3, 10], ['0652', 3, 8], ['0031', 3, 10], ['0313', 3, 12]] },
+      { name: 'Legs', emoji: 'legs', prog: 'double', rir: 2, ex: [['0043', 4, 8], ['0085', 3, 10], ['0739', 3, 12], ['0585', 3, 12], ['0586', 3, 12], ['0605', 4, 15]] },
+      { name: 'Upper', emoji: 'pullup', prog: 'double', rir: 2, ex: [['0025', 4, 8], ['0027', 4, 8], ['0426', 3, 10], ['0652', 3, 10], ['0241', 3, 12], ['0031', 3, 12]] },
+      { name: 'Lower', emoji: 'legs', prog: 'double', rir: 2, ex: [['0043', 4, 8], ['0085', 3, 10], ['0739', 3, 12], ['0586', 3, 12], ['0605', 4, 15]] }
+    ],
+    week: { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4 }
   }
 ]
 

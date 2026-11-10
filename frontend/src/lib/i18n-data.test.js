@@ -16,15 +16,10 @@ import { PPL_SPEC } from './starter.js'
 import { JOINTS } from './injuries.js'
 import { SITES, siteKey } from './measures.js'
 import { EXDB } from './exercises-data.js'
-import dePack from '../locales/de.js'
+import { recommendPlan } from './onboard.js'
 import esPack from '../locales/es.js'
-import frPack from '../locales/fr.js'
-import hiPack from '../locales/hi.js'
-import itPack from '../locales/it.js'
-import ptPack from '../locales/pt.js'
-import zhPack from '../locales/zh.js'
 
-const LOCALES = { de: dePack, es: esPack, fr: frPack, hi: hiPack, it: itPack, pt: ptPack, zh: zhPack }
+const LOCALES = { es: esPack }
 
 // Every data-driven key the app renders through t(…).
 const dataKeys = new Set([
@@ -38,6 +33,16 @@ for (const plan of PLAN_LIBRARY) {
   dataKeys.add(plan.name)
   dataKeys.add(plan.note)
   for (const r of plan.routines) dataKeys.add(r.name)
+}
+// The recommender's reasons reach t() through a variable too (t(rec.reasonKey) in the survey
+// sheet) — walk the whole input grid so every branch's sentence is covered, whatever the
+// mapping becomes.
+for (const days of [1, 2, 3, 4, 5, 7]) {
+  for (const goal of [null, 'strength', 'hypertrophy', 'lose']) {
+    for (const experience of [null, 'beginner', 'intermediate', 'advanced']) {
+      dataKeys.add(recommendPlan({ days, goal, experience }).reasonKey)
+    }
+  }
 }
 
 describe('data-driven translations', () => {

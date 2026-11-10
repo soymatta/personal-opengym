@@ -51,6 +51,22 @@ describe('PLAN_LIBRARY', () => {
     expect(slots('fullbody')).toBe(3)
     expect(slots('upperlower')).toBe(4)
     expect(slots('ppl')).toBe(3)
+    expect(slots('pplul')).toBe(5)
+  })
+
+  it('names the five pplul days Push, Pull, Legs, Upper and Lower — and each resolves', () => {
+    const plan = planOf('pplul')
+    expect(plan.routines.map(r => r.name)).toEqual(['Push', 'Pull', 'Legs', 'Upper', 'Lower'])
+    // Every routine id in every routine resolves in the bundled dataset.
+    for (const r of planRoutines(plan)) {
+      expect(r.ex.length).toBeGreaterThan(0)
+      for (const e of r.ex) {
+        expect(EXIDX[e.id], `${r.name}/${e.id}`).toBeDefined()
+        expect(e.weight).toBe(0)
+      }
+      expect(r.prog).toBe('double')
+      expect(r.rir).toBe(2)
+    }
   })
 })
 

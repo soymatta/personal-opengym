@@ -23,7 +23,8 @@ import { estimate1RM, best1RM, is1RMRecord, REP_CAP } from './lib/onerm.js'
 import { nextPrescription, applyPrescription, policyFor, defaultIncrement, POLICIES_FOR, POLICY_NAME, POLICY_DESC } from './lib/progression.js'
 import { pctSets, usesPct, WAVES, waveReps, trainingMax } from './lib/percent.js'
 import { loadFor, barOf, BARS } from './lib/plates.js'
-import { equivalentsOf } from './lib/replacements.js'
+import { equivalentsOf, searchExercises } from './lib/replacements.js'
+import { riskFor } from './lib/injuries.js'
 import { SITES, siteKey, lenUnit, toLen, toCm, setMeasure } from './lib/measures.js'
 
 const S = () => useStore.getState().S
@@ -552,7 +553,24 @@ export const exerciseDetailSheet = ex => ui().openSheet(close => <ExerciseDetail
 // labelled instead of being offered as if the swap were invisible.
 function ReplaceSheet({ ex, onPick, close }) {
   const st = useStore(s => s.S)
-  const { exact, similar } = equivalentsOf(ex, { pool: allExercises(st), injuries: st.injuries || [] })
+  const [q, setQ] = useState('')
+  const [shown, setShown] = useState(50)
+  const pool = allExercises(st)
+  const { exact, similar } = equivalentsOf(ex, { pool, injuries: st.injuries || [] })
+  // A typed query searches the whole library instead of the curated lists, with the same
+  // matching as the library (accent-insensitive, English + Spanish). Empty query keeps the
+  // exact/similar lists exactly as they were.
+  const searching = q.trim().length > 0
+  const hits = searching ? searchExercises(pool.filter(e => e.id !== ex.id), q, shown) : []
+  // Search hits reuse the row renderer, so they need the item shape it reads — including
+  // the injury tag the curated rows carry.
+  const toItem = hit => ({
+    ex: hit,
+    sameEquipment: hit.eq === ex.eq,
+    shared: [],
+    why: 'search',
+    risk: (st.injuries || []).length ? riskFor(hit, st.injuries).map(r => r.joint) : [],
+  })
   const row = (c, dropIn) => (
     <div className="item" key={c.ex.id} onClick={() => { close(); onPick(c.ex) }}>
       <Thumb ex={c.ex} />
@@ -575,20 +593,31 @@ function ReplaceSheet({ ex, onPick, close }) {
   )
   return <>
     <h3>{t('Replace {0}', exName(ex))}</h3>
-    <div className="small dim" style={{ marginBottom: 12 }}>
-      {t('Same movement and target muscle, ranked by shared muscles and equipment.')}
-    </div>
-    {exact.length > 0 && <div className="list">{exact.map(c => row(c, true))}</div>}
-    {similar.length > 0 && <>
-      <h4 className="sec">{t('Not a direct swap')}</h4>
-      <div className="small dim" style={{ margin: '-4px 2px 8px' }}>
-        {t('It trains the same muscle, but the stimulus changes.')}
+    <div className="search sticktop" style={{ marginBottom: 10 }}><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+      <input className="input" placeholder={t('Search…')} value={q} onChange={e => { setQ(e.target.value); setShown(50) }} /></div>
+    {searching ? <>
+      <h4 className="sec">{t('Search results')}</h4>
+      <div className="list">{hits.map(hit => row(toItem(hit), true))}</div>
+      {hits.length === 0 && <div className="empty">
+        <div className="ico"><Icon name="magnifier" /></div>{t('No match')}
+      </div>}
+      {hits.length >= shown && <><div style={{ height: 8 }} /><Button onClick={() => setShown(s => s + 50)}>{t('Show more')}</Button></>}
+    </> : <>
+      <div className="small dim" style={{ marginBottom: 12 }}>
+        {t('Same movement and target muscle, ranked by shared muscles and equipment.')}
       </div>
-      <div className="list">{similar.map(c => row(c, false))}</div>
+      {exact.length > 0 && <div className="list">{exact.map(c => row(c, true))}</div>}
+      {similar.length > 0 && <>
+        <h4 className="sec">{t('Not a direct swap')}</h4>
+        <div className="small dim" style={{ margin: '-4px 2px 8px' }}>
+          {t('It trains the same muscle, but the stimulus changes.')}
+        </div>
+        <div className="list">{similar.map(c => row(c, false))}</div>
+      </>}
+      {!exact.length && !similar.length && <div className="empty">
+        <div className="ico"><Icon name="shuffle" /></div>{t('No equivalent in the library.')}
+      </div>}
     </>}
-    {!exact.length && !similar.length && <div className="empty">
-      <div className="ico"><Icon name="shuffle" /></div>{t('No equivalent in the library.')}
-    </div>}
   </>
 }
 export const replaceSheet = (ex, onPick) => ui().openSheet(close => <ReplaceSheet ex={ex} onPick={onPick} close={close} />)

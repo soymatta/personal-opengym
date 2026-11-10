@@ -3,7 +3,7 @@
 // reads exercise *names* — a hand-written fixture would pass while 1,300 real names did not.
 import { describe, it, expect } from 'vitest'
 import { EXDB } from './exercises.js'
-import { equivalentsOf, swapEntry, patternOf, classOf, primaryOf, stanceOf } from './replacements.js'
+import { equivalentsOf, searchExercises, swapEntry, patternOf, classOf, primaryOf, stanceOf } from './replacements.js'
 
 const ex = n => {
   const e = EXDB.find(x => x.n === n)
@@ -163,5 +163,29 @@ describe('swapEntry', () => {
   it('leaves an unknown exercise id alone instead of losing the entry', () => {
     const entry = { id: 'gone', sets: 3, reps: 8, weight: 0 }
     expect(swapEntry(entry, 'does-not-exist')).toBe(entry)
+  })
+})
+
+describe('searchExercises', () => {
+  it('returns nothing for an empty query, so the sheet keeps its curated lists', () => {
+    expect(searchExercises(EXDB, '')).toEqual([])
+    expect(searchExercises(EXDB, '   ')).toEqual([])
+  })
+
+  it('searches the whole library, not just the equivalents of one exercise', () => {
+    // A lateral raise is no equivalent of a bench press, but the search still finds it.
+    const hits = searchExercises(EXDB, 'cable one arm lateral raise')
+    expect(hits.map(e => e.n)).toContain('cable one arm lateral raise')
+  })
+
+  it('is accent-insensitive like the library search', () => {
+    expect(searchExercises(EXDB, 'LATERAL').map(e => e.n)).toContain('cable lateral raise')
+  })
+
+  it('caps the list at the limit', () => {
+    const hits = searchExercises(EXDB, 'press', 10)
+    expect(hits.length).toBeLessThanOrEqual(10)
+    expect(hits.length).toBeGreaterThan(0)
+    expect(searchExercises(EXDB, 'press').length).toBeLessThanOrEqual(50)
   })
 })

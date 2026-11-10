@@ -413,6 +413,11 @@ h4.sec{
   position:absolute;left:11px;top:50%;transform:translateY(-50%);z-index:1;
   width:16px;height:16px;stroke:var(--label-3);fill:none;stroke-width:2.1;stroke-linecap:round;
 }
+/* a search box pinned to the top of a scrolling sheet (the replacement sheet): it sticks
+   below the sheet's own top padding, with an opaque backdrop so the list slides under it
+   instead of showing through. Both themes restated — the sheet itself repaints on light. */
+.sheet .sticktop{position:sticky;top:-8px;z-index:5;background:var(--bg-el);padding:10px 0}
+:root[data-theme="light"] .sheet .sticktop{background:var(--bg)}
 
 /* --- switch --- */
 .sw{
@@ -659,7 +664,7 @@ h4.sec{
   position:absolute;left:0;right:0;bottom:0;background:var(--bg-el);
   border-radius:var(--r-xl) var(--r-xl) 0 0;
   padding:8px 18px calc(20px + var(--sab));
-  max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  max-height:90vh;max-height:90dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;
   animation:sheetup .34s var(--ease);
   overscroll-behavior:contain;touch-action:pan-y;will-change:transform;
 }

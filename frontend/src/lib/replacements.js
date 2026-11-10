@@ -24,7 +24,7 @@
 // there. The rules live in one place (`equivalentsOf`) and are unit-tested against the real
 // dataset rather than against hand-written fixtures.
 
-import { EXDB, EXIDX, isCardio } from './exercises.js'
+import { EXDB, EXIDX, isCardio, matchesQuery } from './exercises.js'
 import { musclesOf } from './muscles.js'
 import { riskFor } from './injuries.js'
 import { modeOf } from './history.js'
@@ -253,6 +253,22 @@ function spread(list, limit) {
     if (!out.includes(item)) out.push(item)
   }
   return out
+}
+
+/* ---------------------------------- search ----------------------------------- */
+
+/**
+ * Free-text search over a pool of exercises, for the replacement sheet's search box.
+ *
+ * Same matching as the library (`matchesQuery`: accent-insensitive, English + Spanish),
+ * capped at `limit` so a long list stays reachable on a small phone. Pure: pool in, list
+ * out — an empty query returns nothing, so the caller keeps showing the curated
+ * equivalents lists instead.
+ */
+export function searchExercises(pool, q, limit = 50) {
+  if (!String(q || '').trim()) return []
+  const n = Math.max(0, Math.round(Number(limit) || 0))
+  return (pool || []).filter(e => e && e.id && matchesQuery(e, q)).slice(0, n)
 }
 
 /* ---------------------------------- swapping ---------------------------------- */

@@ -129,6 +129,30 @@ test('a routine exercise can be swapped for an equivalent without losing the pre
   expect(stored.routines[0].ex[0]).toMatchObject({ id: '0289', sets: 3, reps: 8, weight: 0, mode: 'reps' })
 })
 
+test('the replacement sheet searches the whole library, not just equivalents', async ({ page }) => {
+  await load(page, plan)
+  await page.goto('/#/plan/r/r1')
+
+  await page.locator('.list .item').first().click()
+  await page.getByRole('button', { name: 'Replace exercise' }).click()
+  await expect(page.getByRole('heading', { name: 'Replace Barbell bench press' })).toBeVisible()
+
+  const sheet = page.locator('.sheet')
+  // Empty query shows the curated equivalents, unchanged.
+  await expect(sheet.locator('.item').filter({ hasText: 'Dumbbell bench press' }).first()).toBeVisible()
+  // A typed query searches the whole library instead — a lateral raise is no bench-press
+  // equivalent, but the search still finds it.
+  await sheet.getByPlaceholder('Search…').fill('cable one arm lateral raise')
+  await expect(sheet.getByRole('heading', { name: 'Search results' })).toBeVisible()
+  await expect(sheet.locator('.item').filter({ hasText: 'Dumbbell bench press' })).toBeHidden()
+  await sheet.locator('.item').filter({ hasText: 'Cable one arm lateral raise' }).first().click()
+
+  await expect(page.locator('.list .item').first()).toContainText('Cable one arm lateral raise')
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('gym_state_v1')))
+  // The prescription survives the jump across movements, like any other swap.
+  expect(stored.routines[0].ex[0]).toMatchObject({ id: '0192', sets: 3, reps: 8, weight: 0, mode: 'reps' })
+})
+
 test('the exercise library offers replacements too', async ({ page }) => {
   await load(page, plan)
   await page.goto('/#/library')
